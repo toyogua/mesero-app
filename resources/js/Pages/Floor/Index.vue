@@ -1,9 +1,20 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Badge from '@/Components/UI/Badge.vue';
 import Button from '@/Components/UI/Button.vue';
+import { useChannel } from '@/composables/useChannel.js';
+
+useChannel('floor.all', '.FloorChanged', () => {
+    router.reload({ only: ['areas'], preserveScroll: true });
+});
+
+// Refrescar tiempos cada minuto sin recargar todo
+const now = ref(Date.now());
+let tick = null;
+onMounted(() => (tick = setInterval(() => (now.value = Date.now()), 60000)));
+onUnmounted(() => clearInterval(tick));
 
 const props = defineProps({
     areas: { type: Array, default: () => [] },
@@ -46,14 +57,14 @@ function openTable(table) {
 
 function elapsed(iso) {
     if (!iso) return '';
-    const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    const m = Math.floor((now.value - new Date(iso).getTime()) / 60000);
     if (m < 60) return `${m}m`;
     return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
 function elapsedTone(iso) {
     if (!iso) return 'neutral';
-    const m = (Date.now() - new Date(iso).getTime()) / 60000;
+    const m = (now.value - new Date(iso).getTime()) / 60000;
     if (m < 30) return 'ok';
     if (m < 75) return 'warn';
     return 'err';

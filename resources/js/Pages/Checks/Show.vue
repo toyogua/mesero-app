@@ -4,10 +4,15 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Button from '@/Components/UI/Button.vue';
 import Badge from '@/Components/UI/Badge.vue';
+import { useChannel } from '@/composables/useChannel.js';
 
 const props = defineProps({
     check: { type: Object, required: true },
     menu: { type: Array, default: () => [] },
+});
+
+useChannel(`check.${props.check.id}`, '.CheckUpdated', () => {
+    router.reload({ only: ['check'], preserveScroll: true });
 });
 
 const activeCategory = ref(props.menu[0]?.category || null);

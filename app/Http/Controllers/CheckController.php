@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Enums\CheckItemStatus;
 use App\Enums\CheckStatus;
+use App\Events\CheckUpdated;
+use App\Events\FloorChanged;
+use App\Events\KitchenQueueChanged;
 use App\Models\Check;
 use App\Models\MenuItem;
 use App\Models\Table;
@@ -38,6 +41,11 @@ class CheckController extends Controller
                 'opened_at' => now(),
             ]);
         });
+
+        if ($table->area_id) {
+            FloorChanged::dispatch($table->area_id, 'occupied');
+        }
+        CheckUpdated::dispatch($check, 'opened');
 
         return redirect()->route('checks.show', $check)
             ->with('success', "Comanda {$check->number} abierta");
@@ -99,6 +107,16 @@ class CheckController extends Controller
             }
         });
 
+        $stationCodes = $drafts->load('kitchenStation:id,code')
+            ->pluck('kitchenStation.code')
+            ->filter()
+            ->all();
+
+        if ($stationCodes) {
+            KitchenQueueChanged::dispatch($stationCodes, 'new_items');
+        }
+        CheckUpdated::dispatch($check, 'sent_to_kitchen');
+
         return back()->with('success', "{$drafts->count()} items enviados a cocina");
     }
 
@@ -119,6 +137,11 @@ class CheckController extends Controller
             'status' => CheckStatus::Closed->value,
             'closed_at' => now(),
         ])->save();
+
+        if ($check->table?->area_id) {
+            FloorChanged::dispatch($check->table->area_id, 'freed');
+        }
+        CheckUpdated::dispatch($check, 'closed');
 
         return redirect()->route('floor.index')
             ->with('success', "Comanda {$check->number} cerrada");

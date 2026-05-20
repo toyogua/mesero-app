@@ -14,10 +14,32 @@ const now = ref(Date.now());
 
 // Refresh timestamps cada 15s para que los tiempos se actualicen
 let timer = null;
+const subscriptions = [];
+
+function refreshQueue() {
+    router.reload({ only: ['items'], preserveScroll: true });
+}
+
 onMounted(() => {
     timer = setInterval(() => (now.value = Date.now()), 15000);
+
+    if (window.Echo) {
+        for (const s of props.stations) {
+            const ch = window.Echo.private(`kitchen.${s.code}`);
+            ch.listen('.KitchenQueueChanged', refreshQueue);
+            subscriptions.push(`kitchen.${s.code}`);
+        }
+    }
 });
-onUnmounted(() => clearInterval(timer));
+
+onUnmounted(() => {
+    clearInterval(timer);
+    if (window.Echo) {
+        for (const name of subscriptions) {
+            try { window.Echo.leave(`private-${name}`); } catch {}
+        }
+    }
+});
 
 const stationOptions = computed(() => [
     { code: 'all', name: 'Todas', count: props.items.length },

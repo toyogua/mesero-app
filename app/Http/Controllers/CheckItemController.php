@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Enums\CheckItemStatus;
+use App\Events\CheckUpdated;
+use App\Events\KitchenQueueChanged;
 use App\Models\Check;
 use App\Models\CheckItem;
 use App\Models\MenuItem;
@@ -44,6 +46,8 @@ class CheckItemController extends Controller
             $check->recalculate();
         });
 
+        CheckUpdated::dispatch($check, 'item_added');
+
         return back()->with('success', count($validated['items']).' item(s) agregados');
     }
 
@@ -68,6 +72,8 @@ class CheckItemController extends Controller
         $item->update(array_filter($validated, fn ($v) => $v !== null));
         $item->check->recalculate();
 
+        CheckUpdated::dispatch($item->check, 'item_updated');
+
         return back();
     }
 
@@ -82,13 +88,20 @@ class CheckItemController extends Controller
             $check = $item->check;
             $item->delete();
             $check->recalculate();
+            CheckUpdated::dispatch($check, 'item_removed');
 
             return back()->with('success', 'Item eliminado');
         }
 
         if ($item->status === CheckItemStatus::Ordered) {
+            $stationCode = $item->kitchenStation?->code;
             $item->transitionTo(CheckItemStatus::Cancelled);
             $item->check->recalculate();
+
+            if ($stationCode) {
+                KitchenQueueChanged::dispatch([$stationCode], 'item_cancelled');
+            }
+            CheckUpdated::dispatch($item->check, 'item_cancelled');
 
             return back()->with('success', 'Item cancelado');
         }
@@ -129,6 +142,14 @@ class CheckItemController extends Controller
         } catch (\RuntimeException $e) {
             throw ValidationException::withMessages(['item' => $e->getMessage()]);
         }
+
+        $item->refresh();
+        $stationCode = $item->kitchenStation?->code;
+
+        if ($stationCode) {
+            KitchenQueueChanged::dispatch([$stationCode], $target->value);
+        }
+        CheckUpdated::dispatch($item->check, "item_{$target->value}");
 
         return back()->with('success', "Item marcado como {$verb}");
     }
