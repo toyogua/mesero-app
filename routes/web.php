@@ -4,11 +4,13 @@ use App\Http\Controllers\Admin\FelInvoiceController;
 use App\Http\Controllers\Admin\IngredientController;
 use App\Http\Controllers\Admin\ModifierGroupController;
 use App\Http\Controllers\Admin\RecipeController;
+use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\CheckController;
 use App\Http\Controllers\CheckItemController;
 use App\Http\Controllers\FloorController;
 use App\Http\Controllers\KitchenController;
+use App\Http\Controllers\SplitController;
 use App\Http\Controllers\TicketController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -53,9 +55,16 @@ Route::middleware('auth')->group(function () {
     // Cocina
     Route::get('/kitchen', [KitchenController::class, 'index'])->name('kitchen.index');
 
+    // Tip
+    Route::patch('/checks/{check}/tip', [CheckController::class, 'tip'])->name('checks.tip');
+
+    // Splits
+    Route::post('/checks/{check}/splits', [SplitController::class, 'store'])->name('splits.store');
+    Route::patch('/check-splits/{split}/pay', [SplitController::class, 'pay'])->name('splits.pay');
+    Route::delete('/checks/{check}/splits', [SplitController::class, 'destroy'])->name('splits.destroy');
+
     // Stubs
     Route::get('/menu', fn () => Inertia::render('Menu/Placeholder'))->name('menu.index');
-    Route::get('/reports', fn () => Inertia::render('Reports/Placeholder'))->name('reports.index');
 
     // Print tickets (Blade — abrir en nueva pestaña)
     Route::get('/checks/{check}/ticket', [TicketController::class, 'check'])->name('tickets.check');
@@ -80,6 +89,9 @@ Route::middleware('auth')->group(function () {
         // FEL invoices
         Route::get('/fel-invoices', [FelInvoiceController::class, 'index'])->name('fel-invoices.index');
         Route::post('/fel-invoices/{invoice}/retry', [FelInvoiceController::class, 'retry'])->name('fel-invoices.retry');
+
+        // Reports
+        Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
 
         // Recipes + modifier assignment per menu item
         Route::get('/menu-items/{menuItem}/recipe', [RecipeController::class, 'show'])->name('recipes.show');

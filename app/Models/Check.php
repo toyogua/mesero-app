@@ -51,6 +51,11 @@ class Check extends Model
         return $this->hasOne(FelInvoice::class);
     }
 
+    public function splits(): HasMany
+    {
+        return $this->hasMany(PaymentSplit::class);
+    }
+
     public function scopeOpen($query)
     {
         return $query->where('status', CheckStatus::Open);

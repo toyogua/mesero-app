@@ -152,6 +152,41 @@ const filteredMenu = computed(() =>
         ? props.menu.filter((g) => g.category === activeCategory.value)
         : props.menu
 );
+
+// ── Tip ──────────────────────────────────────────────────────────────────────
+const tipInput = ref('');
+
+function applyTipPct(pct) {
+    const amount = ((props.check.subtotal * pct) / 100).toFixed(2);
+    tipInput.value = amount;
+    submitTip(amount);
+}
+
+function submitTip(amount) {
+    const val = parseFloat(amount || tipInput.value);
+    if (isNaN(val) || val < 0) return;
+    router.patch(`/checks/${props.check.id}/tip`, { amount: val }, { preserveScroll: true, preserveState: false });
+    tipInput.value = '';
+}
+
+// ── Splits ───────────────────────────────────────────────────────────────────
+const splitParts = ref(2);
+const showSplitForm = ref(false);
+
+function createSplits() {
+    router.post(`/checks/${props.check.id}/splits`, { parts: splitParts.value }, {
+        preserveScroll: true, preserveState: false,
+        onSuccess: () => { showSplitForm.value = false; },
+    });
+}
+
+function paySplit(split, method) {
+    router.patch(`/check-splits/${split.id}/pay`, { method }, { preserveScroll: true, preserveState: false });
+}
+
+function resetSplits() {
+    router.delete(`/checks/${props.check.id}/splits`, { preserveScroll: true, preserveState: false });
+}
 </script>
 
 <template>
@@ -282,6 +317,91 @@ const filteredMenu = computed(() =>
                         </div>
                         <div class="flex justify-between text-lg font-semibold pt-2 border-t border-[var(--color-border-faint)] mt-2">
                             <span>Total</span><span class="font-numeric">{{ currency(check.total) }}</span>
+                        </div>
+                    </div>
+
+                    <!-- Tip widget -->
+                    <div v-if="check.status === 'open'" class="px-5 py-4 border-t border-[var(--color-border-faint)]">
+                        <div class="text-[10px] uppercase tracking-widest text-[var(--color-fg-dim)] mb-2">Propina</div>
+                        <div class="flex gap-2 mb-2">
+                            <button
+                                v-for="pct in [10, 15, 20]" :key="pct"
+                                type="button"
+                                class="flex-1 h-9 rounded-lg text-xs font-medium border border-[var(--color-border-faint)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition"
+                                @click="applyTipPct(pct)"
+                            >{{ pct }}%</button>
+                        </div>
+                        <div class="flex gap-2">
+                            <input
+                                v-model="tipInput"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="Monto manual"
+                                class="flex-1 h-9 rounded-lg border border-[var(--color-border-faint)] bg-[var(--color-surface)] px-3 text-sm"
+                                @keydown.enter="submitTip()"
+                            />
+                            <Button size="sm" variant="ghost" @click="submitTip()">Aplicar</Button>
+                        </div>
+                    </div>
+
+                    <!-- Split section -->
+                    <div v-if="check.status === 'open'" class="px-5 py-4 border-t border-[var(--color-border-faint)]">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="text-[10px] uppercase tracking-widest text-[var(--color-fg-dim)]">División de cuenta</div>
+                            <button
+                                v-if="check.splits?.length"
+                                type="button"
+                                class="text-xs text-[var(--color-err)] hover:underline"
+                                @click="resetSplits"
+                            >Reiniciar</button>
+                        </div>
+
+                        <!-- No splits yet -->
+                        <div v-if="!check.splits?.length">
+                            <div v-if="!showSplitForm" class="flex gap-2">
+                                <Button variant="ghost" size="sm" class="w-full" @click="showSplitForm = true">Dividir en partes iguales</Button>
+                            </div>
+                            <div v-else class="flex gap-2 items-center">
+                                <span class="text-sm text-[var(--color-fg-muted)]">Partes:</span>
+                                <input
+                                    v-model.number="splitParts"
+                                    type="number" min="2" max="20"
+                                    class="w-16 h-9 rounded-lg border border-[var(--color-border-faint)] bg-[var(--color-surface)] px-3 text-sm text-center"
+                                />
+                                <Button size="sm" @click="createSplits">Dividir</Button>
+                                <Button size="sm" variant="ghost" @click="showSplitForm = false">✕</Button>
+                            </div>
+                        </div>
+
+                        <!-- Splits list -->
+                        <div v-else class="space-y-2">
+                            <div
+                                v-for="split in check.splits"
+                                :key="split.id"
+                                class="flex items-center gap-3 rounded-xl border px-3 py-2.5 transition"
+                                :class="split.paid_at ? 'border-[var(--color-ok)]/40 bg-[var(--color-ok)]/5' : 'border-[var(--color-border-faint)]'"
+                            >
+                                <div class="flex-1">
+                                    <div class="text-sm font-medium">{{ split.label }}</div>
+                                    <div class="text-xs text-[var(--color-fg-muted)]">
+                                        {{ currency(split.amount) }}
+                                        <span v-if="split.paid_at" class="text-[var(--color-ok)]"> · Pagado ({{ split.method }})</span>
+                                    </div>
+                                </div>
+                                <div v-if="!split.paid_at" class="flex gap-1">
+                                    <button
+                                        v-for="method in ['cash', 'card']"
+                                        :key="method"
+                                        type="button"
+                                        class="h-8 px-2.5 rounded-lg text-[10px] uppercase tracking-wide font-medium border border-[var(--color-border-faint)] hover:border-[var(--color-ok)] hover:text-[var(--color-ok)] transition"
+                                        @click="paySplit(split, method)"
+                                    >{{ method === 'cash' ? 'Efectivo' : 'Tarjeta' }}</button>
+                                </div>
+                                <div v-else class="text-[var(--color-ok)]">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

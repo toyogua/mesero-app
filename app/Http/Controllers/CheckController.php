@@ -63,6 +63,7 @@ class CheckController extends Controller
             'items.kitchenStation:id,name,code',
             'items.modifiers',
             'felInvoice',
+            'splits',
         ]);
 
         $menu = MenuItem::query()
@@ -133,6 +134,19 @@ class CheckController extends Controller
         CheckUpdated::dispatch($check, 'sent_to_kitchen');
 
         return back()->with('success', "{$drafts->count()} items enviados a cocina");
+    }
+
+    public function tip(Request $request, Check $check): RedirectResponse
+    {
+        $this->assertMutable($check);
+
+        $request->validate(['amount' => 'required|numeric|min:0']);
+
+        $check->forceFill(['tip' => (float) $request->input('amount')])->save();
+        $check->recalculate();
+        CheckUpdated::dispatch($check, 'tip_updated');
+
+        return back();
     }
 
     /**
@@ -218,6 +232,13 @@ class CheckController extends Controller
                 'serie'  => $check->felInvoice->serie,
                 'numero' => $check->felInvoice->numero,
             ] : null,
+            'splits' => $check->splits->map(fn ($s) => [
+                'id'      => $s->id,
+                'label'   => $s->label,
+                'amount'  => (float) $s->amount,
+                'method'  => $s->method,
+                'paid_at' => $s->paid_at?->toIso8601String(),
+            ])->values()->all(),
             'items' => $check->items->map(fn ($i) => [
                 'id' => $i->id,
                 'name' => $i->name_snapshot,
