@@ -136,6 +136,18 @@ class CheckController extends Controller
         return back()->with('success', "{$drafts->count()} items enviados a cocina");
     }
 
+    public function notes(Request $request, Check $check): RedirectResponse
+    {
+        $this->assertMutable($check);
+
+        $request->validate(['notes' => 'nullable|string|max:500']);
+
+        $check->update(['notes' => $request->input('notes')]);
+        CheckUpdated::dispatch($check, 'notes_updated');
+
+        return back();
+    }
+
     public function tip(Request $request, Check $check): RedirectResponse
     {
         $this->assertMutable($check);

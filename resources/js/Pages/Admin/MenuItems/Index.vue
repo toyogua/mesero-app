@@ -1,18 +1,19 @@
 <script setup>
-import { ref, computed } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
+import { ref } from 'vue';
+import { Head, router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Button from '@/Components/UI/Button.vue';
 import Badge from '@/Components/UI/Badge.vue';
 
 const props = defineProps({
-    items:    { type: Array,  required: true },
+    items:    { type: Object, required: true },
     stations: { type: Array,  required: true },
+    filters:  { type: Object, required: true },
 });
 
 const CATEGORIES = [
     { value: 'entradas',      label: 'Entradas' },
-    { value: 'platos_fuertes',label: 'Platos fuertes' },
+    { value: 'platos_fuertes', label: 'Platos fuertes' },
     { value: 'bebidas',       label: 'Bebidas' },
     { value: 'postres',       label: 'Postres' },
     { value: 'otros',         label: 'Otros' },
@@ -20,13 +21,26 @@ const CATEGORIES = [
 
 const blank = () => ({ name: '', description: '', price: '', category: 'platos_fuertes', sku: '', kitchen_station_id: props.stations[0]?.id ?? '', active: true });
 
-const form   = ref(blank());
-const editing = ref(null); // item id being edited
-const filterCat = ref('all');
+const form    = ref(blank());
+const editing = ref(null);
 
-const filtered = computed(() =>
-    filterCat.value === 'all' ? props.items : props.items.filter(i => i.category === filterCat.value)
-);
+const search = ref(props.filters.search ?? '');
+
+function navigate(params = {}) {
+    router.get('/admin/menu-items', {
+        search:   search.value || undefined,
+        category: props.filters.category || undefined,
+        ...params,
+    }, { preserveScroll: true });
+}
+
+function setCategory(cat) {
+    navigate({ category: cat || undefined, page: 1 });
+}
+
+function applySearch() {
+    navigate({ page: 1 });
+}
 
 function openEdit(item) {
     editing.value = item.id;
@@ -62,67 +76,100 @@ function currency(v) { return `Q ${Number(v).toFixed(2)}`; }
     <Head title="Menú — Admin" />
     <AppLayout title="Ítems de menú">
 
-        <!-- Filter tabs -->
-        <div class="flex gap-2 mb-6 flex-wrap">
-            <button
-                v-for="opt in [{ value: 'all', label: 'Todos' }, ...CATEGORIES]"
-                :key="opt.value"
-                type="button"
-                class="h-9 px-4 rounded-full text-xs font-medium uppercase tracking-widest transition border"
-                :class="filterCat === opt.value
-                    ? 'bg-[var(--color-primary)] text-[oklch(15%_0.02_60)] border-transparent'
-                    : 'text-[var(--color-fg-muted)] border-[var(--color-border-faint)] hover:border-[var(--color-border)]'"
-                @click="filterCat = opt.value"
-            >{{ opt.label }}</button>
+        <!-- Filter bar -->
+        <div class="flex flex-wrap gap-3 mb-6 items-center">
+            <!-- Category tabs -->
+            <div class="flex gap-2 flex-wrap">
+                <button
+                    v-for="opt in [{ value: '', label: 'Todos' }, ...CATEGORIES]"
+                    :key="opt.value"
+                    type="button"
+                    class="h-9 px-4 rounded-full text-xs font-medium uppercase tracking-widest transition border"
+                    :class="(filters.category ?? '') === opt.value
+                        ? 'bg-[var(--color-primary)] text-[oklch(15%_0.02_60)] border-transparent'
+                        : 'text-[var(--color-fg-muted)] border-[var(--color-border-faint)] hover:border-[var(--color-border)]'"
+                    @click="setCategory(opt.value)"
+                >{{ opt.label }}</button>
+            </div>
+            <!-- Search -->
+            <div class="flex gap-2 ml-auto">
+                <input
+                    v-model="search"
+                    type="search"
+                    placeholder="Buscar por nombre…"
+                    class="h-9 px-3 rounded-lg border border-[var(--color-border-faint)] bg-[var(--color-surface)] text-sm w-52"
+                    @keydown.enter="applySearch"
+                />
+                <Button size="sm" variant="ghost" @click="applySearch">Buscar</Button>
+            </div>
         </div>
 
         <div class="grid lg:grid-cols-[1fr_380px] gap-6">
 
             <!-- Table -->
-            <div class="rounded-2xl border border-[var(--color-border-faint)] overflow-hidden">
-                <table class="w-full text-sm">
-                    <thead class="bg-[var(--color-surface)] border-b border-[var(--color-border-faint)]">
-                        <tr>
-                            <th class="table-th">Nombre</th>
-                            <th class="table-th">Categoría</th>
-                            <th class="table-th">Estación</th>
-                            <th class="table-th text-right">Precio</th>
-                            <th class="table-th">Estado</th>
-                            <th class="table-th"></th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-[var(--color-border-faint)]">
-                        <tr v-if="!filtered.length">
-                            <td colspan="6" class="px-4 py-10 text-center text-[var(--color-fg-dim)]">Sin ítems.</td>
-                        </tr>
-                        <tr
-                            v-for="item in filtered" :key="item.id"
-                            class="hover:bg-[var(--color-surface)]/50"
-                            :class="{ 'opacity-50': !item.active }"
-                        >
-                            <td class="table-td font-medium">
-                                {{ item.name }}
-                                <div v-if="item.description" class="text-xs text-[var(--color-fg-dim)] truncate max-w-xs">{{ item.description }}</div>
-                            </td>
-                            <td class="table-td text-[var(--color-fg-muted)]">{{ item.category }}</td>
-                            <td class="table-td text-[var(--color-fg-muted)]">{{ item.station_name }}</td>
-                            <td class="table-td text-right font-numeric">{{ currency(item.price) }}</td>
-                            <td class="table-td">
-                                <Badge :tone="item.active ? 'ok' : 'neutral'" size="sm">{{ item.active ? 'Activo' : 'Inactivo' }}</Badge>
-                            </td>
-                            <td class="table-td text-right">
-                                <div class="flex gap-1 justify-end">
-                                    <Button variant="ghost" size="sm" @click="openEdit(item)">Editar</Button>
-                                    <Button v-if="item.active" variant="ghost" size="sm" @click="deactivate(item)">Desactivar</Button>
-                                </div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div>
+                <div class="rounded-2xl border border-[var(--color-border-faint)] overflow-hidden mb-4">
+                    <table class="w-full text-sm">
+                        <thead class="bg-[var(--color-surface)] border-b border-[var(--color-border-faint)]">
+                            <tr>
+                                <th class="table-th">Nombre</th>
+                                <th class="table-th">Categoría</th>
+                                <th class="table-th">Estación</th>
+                                <th class="table-th text-right">Precio</th>
+                                <th class="table-th">Estado</th>
+                                <th class="table-th"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-[var(--color-border-faint)]">
+                            <tr v-if="!items.data.length">
+                                <td colspan="6" class="px-4 py-10 text-center text-[var(--color-fg-dim)]">Sin ítems.</td>
+                            </tr>
+                            <tr
+                                v-for="item in items.data" :key="item.id"
+                                class="hover:bg-[var(--color-surface)]/50"
+                                :class="{ 'opacity-50': !item.active }"
+                            >
+                                <td class="table-td font-medium">
+                                    {{ item.name }}
+                                    <div v-if="item.description" class="text-xs text-[var(--color-fg-dim)] truncate max-w-xs">{{ item.description }}</div>
+                                </td>
+                                <td class="table-td text-[var(--color-fg-muted)]">{{ item.category }}</td>
+                                <td class="table-td text-[var(--color-fg-muted)]">{{ item.station_name }}</td>
+                                <td class="table-td text-right font-numeric">{{ currency(item.price) }}</td>
+                                <td class="table-td">
+                                    <Badge :tone="item.active ? 'ok' : 'neutral'" size="sm">{{ item.active ? 'Activo' : 'Inactivo' }}</Badge>
+                                </td>
+                                <td class="table-td text-right">
+                                    <div class="flex gap-1 justify-end">
+                                        <Button variant="ghost" size="sm" @click="openEdit(item)">Editar</Button>
+                                        <Button v-if="item.active" variant="ghost" size="sm" @click="deactivate(item)">Desactivar</Button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div v-if="items.last_page > 1" class="flex items-center justify-between text-sm">
+                    <span class="text-[var(--color-fg-muted)]">{{ items.from }}–{{ items.to }} de {{ items.total }}</span>
+                    <div class="flex gap-1">
+                        <Link
+                            v-for="link in items.links" :key="link.label"
+                            :href="link.url ?? '#'"
+                            :class="[
+                                'px-3 py-1 rounded-lg border border-[var(--color-border-faint)]',
+                                link.active ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]' : 'bg-[var(--color-surface)]',
+                                !link.url ? 'opacity-40 pointer-events-none' : '',
+                            ]"
+                            v-html="link.label"
+                        />
+                    </div>
+                </div>
             </div>
 
             <!-- Form -->
-            <div class="rounded-2xl border border-[var(--color-border-faint)] bg-[var(--color-surface)] p-5">
+            <div class="rounded-2xl border border-[var(--color-border-faint)] bg-[var(--color-surface)] p-5 h-fit">
                 <h2 class="text-sm font-medium uppercase tracking-widest text-[var(--color-fg-dim)] mb-4">
                     {{ editing ? 'Editar ítem' : 'Nuevo ítem' }}
                 </h2>

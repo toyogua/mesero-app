@@ -40,7 +40,7 @@ class AdminCrudTest extends TestCase
         $this->actingAs($this->admin)
             ->get('/admin/menu-items')
             ->assertOk()
-            ->assertInertia(fn ($page) => $page->component('Admin/MenuItems/Index')->has('items', 1));
+            ->assertInertia(fn ($page) => $page->component('Admin/MenuItems/Index')->has('items.data', 1));
     }
 
     #[Test]

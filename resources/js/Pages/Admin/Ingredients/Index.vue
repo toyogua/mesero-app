@@ -1,12 +1,14 @@
 <script setup>
-import { ref, computed } from 'vue';
-import { Head, router, useForm } from '@inertiajs/vue3';
+import { ref } from 'vue';
+import { Head, router, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Badge from '@/Components/UI/Badge.vue';
 import Button from '@/Components/UI/Button.vue';
 
 const props = defineProps({
-    ingredients: { type: Array, default: () => [] },
+    ingredients:     { type: Object, required: true },
+    low_stock_count: { type: Number, default: 0 },
+    filters:         { type: Object, required: true },
 });
 
 const UNITS = ['unit', 'kg', 'g', 'L', 'mL', 'portion'];
@@ -92,8 +94,12 @@ function cancelRestock() {
     restocking.value = null;
 }
 
-// ── Stats ────────────────────────────────────────────────────────────────────
-const lowCount = computed(() => props.ingredients.filter((i) => i.low_stock && i.active).length);
+// ── Search ───────────────────────────────────────────────────────────────────
+const search = ref(props.filters.search ?? '');
+
+function applySearch() {
+    router.get('/admin/ingredients', { search: search.value || undefined }, { preserveScroll: true });
+}
 </script>
 
 <template>
@@ -107,11 +113,22 @@ const lowCount = computed(() => props.ingredients.filter((i) => i.low_stock && i
 
         <!-- Low stock banner -->
         <div
-            v-if="lowCount > 0"
-            class="mb-6 rounded-xl border border-[var(--color-warn)]/40 bg-[var(--color-warn)]/10 px-5 py-3 text-sm text-[var(--color-warn)] flex items-center gap-2"
+            v-if="low_stock_count > 0"
+            class="mb-4 rounded-xl border border-[var(--color-warn)]/40 bg-[var(--color-warn)]/10 px-5 py-3 text-sm text-[var(--color-warn)] flex items-center gap-2"
         >
-            <span class="text-base">⚠️</span>
-            <span>{{ lowCount }} ingrediente{{ lowCount > 1 ? 's' : '' }} con stock bajo mínimo</span>
+            <span>{{ low_stock_count }} ingrediente{{ low_stock_count > 1 ? 's' : '' }} con stock bajo mínimo</span>
+        </div>
+
+        <!-- Search bar -->
+        <div class="flex gap-2 mb-6">
+            <input
+                v-model="search"
+                type="search"
+                placeholder="Buscar ingrediente…"
+                class="h-9 px-3 rounded-lg border border-[var(--color-border-faint)] bg-[var(--color-surface)] text-sm w-64"
+                @keydown.enter="applySearch"
+            />
+            <Button size="sm" variant="ghost" @click="applySearch">Buscar</Button>
         </div>
 
         <!-- New ingredient form -->
@@ -163,7 +180,7 @@ const lowCount = computed(() => props.ingredients.filter((i) => i.low_stock && i
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-[var(--color-border-faint)]">
-                    <tr v-if="!ingredients.length">
+                    <tr v-if="!ingredients.data.length">
                         <td colspan="6" class="px-4 py-10 text-center text-[var(--color-fg-dim)] text-sm">
                             Sin ingredientes aún.
                         </td>
@@ -171,7 +188,7 @@ const lowCount = computed(() => props.ingredients.filter((i) => i.low_stock && i
 
                     <!-- Read row -->
                     <tr
-                        v-for="ing in ingredients"
+                        v-for="ing in ingredients.data"
                         v-else
                         :key="ing.id"
                         class="hover:bg-[var(--color-surface)]/50"
@@ -262,6 +279,23 @@ const lowCount = computed(() => props.ingredients.filter((i) => i.low_stock && i
                 </tbody>
             </table>
         </div>
+        <!-- Pagination -->
+        <div v-if="ingredients.last_page > 1" class="flex items-center justify-between text-sm mt-4">
+            <span class="text-[var(--color-fg-muted)]">{{ ingredients.from }}–{{ ingredients.to }} de {{ ingredients.total }}</span>
+            <div class="flex gap-1">
+                <Link
+                    v-for="link in ingredients.links" :key="link.label"
+                    :href="link.url ?? '#'"
+                    :class="[
+                        'px-3 py-1 rounded-lg border border-[var(--color-border-faint)]',
+                        link.active ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]' : 'bg-[var(--color-surface)]',
+                        !link.url ? 'opacity-40 pointer-events-none' : '',
+                    ]"
+                    v-html="link.label"
+                />
+            </div>
+        </div>
+
     </AppLayout>
 </template>
 

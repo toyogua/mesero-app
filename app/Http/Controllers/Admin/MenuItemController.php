@@ -12,28 +12,40 @@ use Inertia\Response;
 
 class MenuItemController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        $request->validate([
+            'search'   => 'nullable|string|max:100',
+            'category' => 'nullable|in:entradas,platos_fuertes,bebidas,postres,otros',
+        ]);
+
         $items = MenuItem::query()
             ->with('kitchenStation:id,name')
+            ->when($request->filled('search'), fn ($q) => $q->where('name', 'like', '%'.$request->search.'%'))
+            ->when($request->filled('category'), fn ($q) => $q->where('category', $request->category))
             ->orderBy('category')
             ->orderBy('name')
-            ->get()
-            ->map(fn ($i) => [
-                'id'           => $i->id,
-                'name'         => $i->name,
-                'description'  => $i->description,
-                'price'        => (float) $i->price,
-                'category'     => $i->category,
-                'sku'          => $i->sku,
-                'active'       => $i->active,
-                'station_name' => $i->kitchenStation?->name,
+            ->paginate(20)
+            ->withQueryString()
+            ->through(fn ($i) => [
+                'id'                 => $i->id,
+                'name'               => $i->name,
+                'description'        => $i->description,
+                'price'              => (float) $i->price,
+                'category'           => $i->category,
+                'sku'                => $i->sku,
+                'active'             => $i->active,
+                'station_name'       => $i->kitchenStation?->name,
                 'kitchen_station_id' => $i->kitchen_station_id,
             ]);
 
         return Inertia::render('Admin/MenuItems/Index', [
             'items'    => $items,
             'stations' => KitchenStation::orderBy('display_order')->get(['id', 'name']),
+            'filters'  => [
+                'search'   => $request->search,
+                'category' => $request->category,
+            ],
         ]);
     }
 

@@ -153,6 +153,17 @@ const filteredMenu = computed(() =>
         : props.menu
 );
 
+// ── Notes ────────────────────────────────────────────────────────────────────
+const editingNotes = ref(false);
+const notesInput   = ref(props.check.notes ?? '');
+
+function saveNotes() {
+    router.patch(`/checks/${props.check.id}/notes`, { notes: notesInput.value }, {
+        preserveScroll: true, preserveState: false,
+        onSuccess: () => { editingNotes.value = false; },
+    });
+}
+
 // ── Tip ──────────────────────────────────────────────────────────────────────
 const tipInput = ref('');
 
@@ -318,6 +329,34 @@ function resetSplits() {
                         <div class="flex justify-between text-lg font-semibold pt-2 border-t border-[var(--color-border-faint)] mt-2">
                             <span>Total</span><span class="font-numeric">{{ currency(check.total) }}</span>
                         </div>
+                    </div>
+
+                    <!-- Notes -->
+                    <div v-if="check.status === 'open'" class="px-5 py-4 border-t border-[var(--color-border-faint)]">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-[10px] uppercase tracking-widest text-[var(--color-fg-dim)]">Nota de mesa</div>
+                            <button v-if="!editingNotes" type="button"
+                                class="text-xs text-[var(--color-primary)] hover:underline"
+                                @click="editingNotes = true; notesInput = check.notes ?? ''"
+                            >{{ check.notes ? 'Editar' : 'Agregar nota' }}</button>
+                        </div>
+                        <p v-if="!editingNotes && check.notes"
+                            class="text-sm text-[var(--color-fg-muted)] italic">{{ check.notes }}</p>
+                        <p v-else-if="!editingNotes"
+                            class="text-xs text-[var(--color-fg-dim)]">Sin nota</p>
+                        <template v-else>
+                            <textarea
+                                v-model="notesInput"
+                                rows="2"
+                                maxlength="500"
+                                class="w-full rounded-lg border border-[var(--color-border-faint)] bg-[var(--color-surface)] px-3 py-2 text-sm resize-none"
+                                placeholder="Alergia, celebración, preferencias…"
+                            />
+                            <div class="flex gap-2 mt-2 justify-end">
+                                <Button size="sm" variant="ghost" @click="editingNotes = false">Cancelar</Button>
+                                <Button size="sm" @click="saveNotes">Guardar</Button>
+                            </div>
+                        </template>
                     </div>
 
                     <!-- Tip widget -->

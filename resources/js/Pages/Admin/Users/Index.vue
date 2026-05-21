@@ -1,13 +1,14 @@
 <script setup>
-import { ref, computed } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
+import { ref } from 'vue';
+import { Head, router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Button from '@/Components/UI/Button.vue';
 import Badge from '@/Components/UI/Badge.vue';
 
 const props = defineProps({
-    users: { type: Array, required: true },
-    roles: { type: Array, required: true },
+    users:   { type: Object, required: true },
+    roles:   { type: Array,  required: true },
+    filters: { type: Object, required: true },
 });
 
 const ROLE_LABEL = {
@@ -21,7 +22,20 @@ const blank = () => ({ name: '', role: 'waiter', pin: '', email: '', password: '
 const form    = ref(blank());
 const editing = ref(null);
 
-const usesPin = computed(() => ['waiter', 'kitchen', 'cashier'].includes(form.value.role));
+const search   = ref(props.filters.search ?? '');
+const roleFilter = ref(props.filters.role ?? '');
+
+const usesPin = () => ['waiter', 'kitchen', 'cashier'].includes(form.value.role);
+
+function navigate(params = {}) {
+    router.get('/admin/users', {
+        search: search.value || undefined,
+        role:   roleFilter.value || undefined,
+        ...params,
+    }, { preserveScroll: true });
+}
+
+function applySearch() { navigate({ page: 1 }); }
 
 function openEdit(user) {
     editing.value = user.id;
@@ -47,45 +61,85 @@ function deactivate(user) {
 <template>
     <Head title="Usuarios — Admin" />
     <AppLayout title="Usuarios">
+
+        <!-- Filter bar -->
+        <div class="flex flex-wrap gap-3 mb-6 items-center">
+            <input
+                v-model="search"
+                type="search"
+                placeholder="Buscar por nombre…"
+                class="h-9 px-3 rounded-lg border border-[var(--color-border-faint)] bg-[var(--color-surface)] text-sm w-52"
+                @keydown.enter="applySearch"
+            />
+            <select
+                v-model="roleFilter"
+                class="h-9 px-3 rounded-lg border border-[var(--color-border-faint)] bg-[var(--color-surface)] text-sm"
+                @change="navigate({ page: 1 })"
+            >
+                <option value="">Todos los roles</option>
+                <option v-for="r in roles" :key="r" :value="r">{{ ROLE_LABEL[r] || r }}</option>
+            </select>
+            <Button size="sm" variant="ghost" @click="applySearch">Buscar</Button>
+        </div>
+
         <div class="grid lg:grid-cols-[1fr_360px] gap-6">
 
-            <div class="rounded-2xl border border-[var(--color-border-faint)] overflow-hidden">
-                <table class="w-full text-sm">
-                    <thead class="bg-[var(--color-surface)] border-b border-[var(--color-border-faint)]">
-                        <tr>
-                            <th class="table-th">Nombre</th>
-                            <th class="table-th">Rol</th>
-                            <th class="table-th">Acceso</th>
-                            <th class="table-th">Estado</th>
-                            <th class="table-th"></th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-[var(--color-border-faint)]">
-                        <tr v-if="!users.length">
-                            <td colspan="5" class="px-4 py-10 text-center text-[var(--color-fg-dim)]">Sin usuarios.</td>
-                        </tr>
-                        <tr v-for="user in users" :key="user.id" class="hover:bg-[var(--color-surface)]/50" :class="{ 'opacity-50': !user.active }">
-                            <td class="table-td font-medium">{{ user.name }}</td>
-                            <td class="table-td">
-                                <Badge :tone="user.role === 'admin' ? 'primary' : 'neutral'" size="sm">{{ ROLE_LABEL[user.role] || user.role }}</Badge>
-                            </td>
-                            <td class="table-td text-xs text-[var(--color-fg-muted)]">
-                                <span v-if="user.email">{{ user.email }}</span>
-                                <span v-else-if="user.has_pin">PIN configurado</span>
-                                <span v-else class="text-[var(--color-err)]">Sin acceso</span>
-                            </td>
-                            <td class="table-td">
-                                <Badge :tone="user.active ? 'ok' : 'neutral'" size="sm">{{ user.active ? 'Activo' : 'Inactivo' }}</Badge>
-                            </td>
-                            <td class="table-td text-right">
-                                <div class="flex gap-1 justify-end">
-                                    <Button variant="ghost" size="sm" @click="openEdit(user)">Editar</Button>
-                                    <Button v-if="user.active" variant="ghost" size="sm" @click="deactivate(user)">Desactivar</Button>
-                                </div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div>
+                <div class="rounded-2xl border border-[var(--color-border-faint)] overflow-hidden mb-4">
+                    <table class="w-full text-sm">
+                        <thead class="bg-[var(--color-surface)] border-b border-[var(--color-border-faint)]">
+                            <tr>
+                                <th class="table-th">Nombre</th>
+                                <th class="table-th">Rol</th>
+                                <th class="table-th">Acceso</th>
+                                <th class="table-th">Estado</th>
+                                <th class="table-th"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-[var(--color-border-faint)]">
+                            <tr v-if="!users.data.length">
+                                <td colspan="5" class="px-4 py-10 text-center text-[var(--color-fg-dim)]">Sin usuarios.</td>
+                            </tr>
+                            <tr v-for="user in users.data" :key="user.id" class="hover:bg-[var(--color-surface)]/50" :class="{ 'opacity-50': !user.active }">
+                                <td class="table-td font-medium">{{ user.name }}</td>
+                                <td class="table-td">
+                                    <Badge :tone="user.role === 'admin' ? 'primary' : 'neutral'" size="sm">{{ ROLE_LABEL[user.role] || user.role }}</Badge>
+                                </td>
+                                <td class="table-td text-xs text-[var(--color-fg-muted)]">
+                                    <span v-if="user.has_pin">PIN configurado</span>
+                                    <span v-else-if="user.email && !user.email.endsWith('@local')">{{ user.email }}</span>
+                                    <span v-else class="text-[var(--color-err)]">Sin acceso</span>
+                                </td>
+                                <td class="table-td">
+                                    <Badge :tone="user.active ? 'ok' : 'neutral'" size="sm">{{ user.active ? 'Activo' : 'Inactivo' }}</Badge>
+                                </td>
+                                <td class="table-td text-right">
+                                    <div class="flex gap-1 justify-end">
+                                        <Button variant="ghost" size="sm" @click="openEdit(user)">Editar</Button>
+                                        <Button v-if="user.active" variant="ghost" size="sm" @click="deactivate(user)">Desactivar</Button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div v-if="users.last_page > 1" class="flex items-center justify-between text-sm">
+                    <span class="text-[var(--color-fg-muted)]">{{ users.from }}–{{ users.to }} de {{ users.total }}</span>
+                    <div class="flex gap-1">
+                        <Link
+                            v-for="link in users.links" :key="link.label"
+                            :href="link.url ?? '#'"
+                            :class="[
+                                'px-3 py-1 rounded-lg border border-[var(--color-border-faint)]',
+                                link.active ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]' : 'bg-[var(--color-surface)]',
+                                !link.url ? 'opacity-40 pointer-events-none' : '',
+                            ]"
+                            v-html="link.label"
+                        />
+                    </div>
+                </div>
             </div>
 
             <div class="rounded-2xl border border-[var(--color-border-faint)] bg-[var(--color-surface)] p-5 h-fit">
@@ -104,7 +158,7 @@ function deactivate(user) {
                         </select>
                     </div>
 
-                    <template v-if="usesPin">
+                    <template v-if="usesPin()">
                         <div>
                             <label class="form-label">PIN {{ editing ? '(dejar vacío para no cambiar)' : '* 4 dígitos' }}</label>
                             <input v-model="form.pin" type="text" inputmode="numeric" maxlength="4" pattern="\d{4}" class="form-input font-numeric" placeholder="1234" />

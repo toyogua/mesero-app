@@ -12,22 +12,33 @@ use Inertia\Response;
 
 class IngredientController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
-        $ingredients = Ingredient::orderBy('name')
-            ->get()
-            ->map(fn ($i) => [
-                'id' => $i->id,
-                'name' => $i->name,
-                'unit' => $i->unit,
+        $request->validate(['search' => 'nullable|string|max:100']);
+
+        $ingredients = Ingredient::query()
+            ->when($request->filled('search'), fn ($q) => $q->where('name', 'like', '%'.$request->search.'%'))
+            ->orderBy('name')
+            ->paginate(20)
+            ->withQueryString()
+            ->through(fn ($i) => [
+                'id'               => $i->id,
+                'name'             => $i->name,
+                'unit'             => $i->unit,
                 'quantity_on_hand' => (float) $i->quantity_on_hand,
-                'minimum_stock' => (float) $i->minimum_stock,
-                'low_stock' => $i->isLowStock(),
-                'active' => $i->active,
+                'minimum_stock'    => (float) $i->minimum_stock,
+                'low_stock'        => $i->isLowStock(),
+                'active'           => $i->active,
             ]);
 
+        $lowStockCount = Ingredient::where('active', true)
+            ->whereColumn('quantity_on_hand', '<=', 'minimum_stock')
+            ->count();
+
         return Inertia::render('Admin/Ingredients/Index', [
-            'ingredients' => $ingredients,
+            'ingredients'    => $ingredients,
+            'low_stock_count' => $lowStockCount,
+            'filters'        => ['search' => $request->search],
         ]);
     }
 

@@ -15,20 +15,35 @@ use Inertia\Response;
 
 class UserController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
-        $users = User::orderBy('role')->orderBy('name')->get()->map(fn ($u) => [
-            'id'     => $u->id,
-            'name'   => $u->name,
-            'email'  => $u->email,
-            'role'   => $u->role->value,
-            'active' => $u->active,
-            'has_pin' => $u->getAttributes()['pin'] !== null,
+        $request->validate([
+            'search' => 'nullable|string|max:100',
+            'role'   => ['nullable', Rule::in(array_column(UserRole::cases(), 'value'))],
         ]);
 
+        $users = User::query()
+            ->when($request->filled('search'), fn ($q) => $q->where('name', 'like', '%'.$request->search.'%'))
+            ->when($request->filled('role'), fn ($q) => $q->where('role', $request->role))
+            ->orderBy('role')->orderBy('name')
+            ->paginate(20)
+            ->withQueryString()
+            ->through(fn ($u) => [
+                'id'      => $u->id,
+                'name'    => $u->name,
+                'email'   => $u->email,
+                'role'    => $u->role->value,
+                'active'  => $u->active,
+                'has_pin' => $u->getAttributes()['pin'] !== null,
+            ]);
+
         return Inertia::render('Admin/Users/Index', [
-            'users' => $users,
-            'roles' => array_column(UserRole::cases(), 'value'),
+            'users'   => $users,
+            'roles'   => array_column(UserRole::cases(), 'value'),
+            'filters' => [
+                'search' => $request->search,
+                'role'   => $request->role,
+            ],
         ]);
     }
 

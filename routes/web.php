@@ -64,6 +64,9 @@ Route::middleware('auth')->group(function () {
     // Tip
     Route::patch('/checks/{check}/tip', [CheckController::class, 'tip'])->name('checks.tip');
 
+    // Notes
+    Route::patch('/checks/{check}/notes', [CheckController::class, 'notes'])->name('checks.notes');
+
     // Splits
     Route::post('/checks/{check}/splits', [SplitController::class, 'store'])->name('splits.store');
     Route::patch('/check-splits/{split}/pay', [SplitController::class, 'pay'])->name('splits.pay');
