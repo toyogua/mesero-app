@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AreaController;
+use App\Http\Controllers\Admin\CashCloseController;
 use App\Http\Controllers\Admin\CheckHistoryController;
 use App\Http\Controllers\Admin\FelInvoiceController;
 use App\Http\Controllers\Admin\IngredientController;
@@ -81,6 +82,11 @@ Route::middleware('auth')->group(function () {
         Route::post('/ingredients', [IngredientController::class, 'store'])->name('ingredients.store');
         Route::patch('/ingredients/{ingredient}', [IngredientController::class, 'update'])->name('ingredients.update');
         Route::delete('/ingredients/{ingredient}', [IngredientController::class, 'destroy'])->name('ingredients.destroy');
+        Route::post('/ingredients/{ingredient}/restock', [IngredientController::class, 'restock'])->name('ingredients.restock');
+
+        // Cash closes
+        Route::get('/cash-closes', [CashCloseController::class, 'index'])->name('cash-closes.index');
+        Route::post('/cash-closes', [CashCloseController::class, 'store'])->name('cash-closes.store');
 
         // Modifier groups
         Route::get('/modifier-groups', [ModifierGroupController::class, 'index'])->name('modifier-groups.index');

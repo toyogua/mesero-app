@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ingredient;
+use App\Models\StockEntry;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -57,6 +58,31 @@ class IngredientController extends Controller
         $ingredient->update($data);
 
         return back()->with('success', 'Ingrediente actualizado.');
+    }
+
+    public function restock(Request $request, Ingredient $ingredient): RedirectResponse
+    {
+        $data = $request->validate([
+            'quantity'   => 'required|numeric|min:0.0001',
+            'cost_price' => 'nullable|numeric|min:0',
+            'notes'      => 'nullable|string|max:255',
+        ]);
+
+        StockEntry::create([
+            'ingredient_id' => $ingredient->id,
+            'user_id'       => $request->user()->id,
+            'quantity'      => $data['quantity'],
+            'cost_price'    => $data['cost_price'] ?? null,
+            'notes'         => $data['notes'] ?? null,
+        ]);
+
+        $ingredient->increment('quantity_on_hand', $data['quantity']);
+
+        if (! empty($data['cost_price'])) {
+            $ingredient->update(['cost_price' => $data['cost_price']]);
+        }
+
+        return back()->with('success', "Stock de {$ingredient->name} actualizado.");
     }
 
     public function destroy(Ingredient $ingredient): RedirectResponse

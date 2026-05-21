@@ -67,6 +67,31 @@ function destroy(ing) {
     }
 }
 
+// ── Restock ──────────────────────────────────────────────────────────────────
+const restocking = ref(null);
+const restockForm = useForm({
+    quantity:   '',
+    cost_price: '',
+    notes:      '',
+});
+
+function startRestock(ing) {
+    restocking.value = ing.id;
+    restockForm.reset();
+}
+
+function submitRestock(ing) {
+    restockForm.post(`/admin/ingredients/${ing.id}/restock`, {
+        onSuccess: () => {
+            restocking.value = null;
+        },
+    });
+}
+
+function cancelRestock() {
+    restocking.value = null;
+}
+
 // ── Stats ────────────────────────────────────────────────────────────────────
 const lowCount = computed(() => props.ingredients.filter((i) => i.low_stock && i.active).length);
 </script>
@@ -166,8 +191,40 @@ const lowCount = computed(() => props.ingredients.filter((i) => i.low_stock && i
                             </td>
                             <td class="px-4 py-3 text-right">
                                 <div class="flex items-center justify-end gap-2">
+                                    <Button variant="subtle" size="sm" @click="startRestock(ing)">Reponer</Button>
                                     <Button variant="subtle" size="sm" @click="startEdit(ing)">Editar</Button>
                                     <Button variant="subtle" size="sm" @click="destroy(ing)">✕</Button>
+                                </div>
+                            </td>
+                        </template>
+
+                        <!-- Restock row -->
+                        <template v-else-if="restocking === ing.id">
+                            <td colspan="4" class="px-4 py-2">
+                                <div class="flex flex-wrap gap-3 items-end">
+                                    <div>
+                                        <label class="field-label">Cantidad a agregar</label>
+                                        <input v-model="restockForm.quantity" type="number" step="0.0001" min="0.0001"
+                                            class="field-input w-36" placeholder="Ej. 10" autofocus />
+                                        <p v-if="restockForm.errors.quantity" class="field-error">{{ restockForm.errors.quantity }}</p>
+                                    </div>
+                                    <div>
+                                        <label class="field-label">Nuevo costo ({{ ing.unit }}) — opcional</label>
+                                        <input v-model="restockForm.cost_price" type="number" step="0.0001" min="0"
+                                            class="field-input w-36" placeholder="Q 0.00" />
+                                    </div>
+                                    <div>
+                                        <label class="field-label">Nota</label>
+                                        <input v-model="restockForm.notes" type="text" maxlength="255"
+                                            class="field-input w-48" placeholder="Proveedor, lote…" />
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-4 py-2 text-center"></td>
+                            <td class="px-4 py-2 text-right">
+                                <div class="flex items-center justify-end gap-2">
+                                    <Button variant="ghost" size="sm" @click="cancelRestock">Cancelar</Button>
+                                    <Button size="sm" :loading="restockForm.processing" @click="submitRestock(ing)">Confirmar</Button>
                                 </div>
                             </td>
                         </template>

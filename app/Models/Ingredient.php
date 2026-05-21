@@ -27,6 +27,11 @@ class Ingredient extends Model
         return $this->hasMany(RecipeItem::class);
     }
 
+    public function stockEntries(): HasMany
+    {
+        return $this->hasMany(StockEntry::class);
+    }
+
     public function isLowStock(): bool
     {
         return $this->quantity_on_hand <= $this->minimum_stock;
