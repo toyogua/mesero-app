@@ -8,8 +8,12 @@ use App\Enums\UserRole;
 use App\Models\Area;
 use App\Models\Check;
 use App\Models\CheckItem;
+use App\Models\Ingredient;
 use App\Models\KitchenStation;
 use App\Models\MenuItem;
+use App\Models\ModifierGroup;
+use App\Models\ModifierOption;
+use App\Models\RecipeItem;
 use App\Models\Table;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -173,5 +177,85 @@ class DemoSeeder extends Seeder
 
             $check->recalculate();
         }
+
+        // ── Ingredientes con costo ────────────────
+        $ingredients = collect([
+            ['name' => 'Pollo',        'unit' => 'kg',      'qty' => 25,  'min' => 5,  'cost' => 28.00],
+            ['name' => 'Res',          'unit' => 'kg',      'qty' => 18,  'min' => 5,  'cost' => 55.00],
+            ['name' => 'Pescado',      'unit' => 'kg',      'qty' => 12,  'min' => 3,  'cost' => 65.00],
+            ['name' => 'Camarón',      'unit' => 'kg',      'qty' => 8,   'min' => 2,  'cost' => 85.00],
+            ['name' => 'Tortillas',    'unit' => 'unit',    'qty' => 300, 'min' => 50, 'cost' => 0.75],
+            ['name' => 'Aguacate',     'unit' => 'unit',    'qty' => 40,  'min' => 10, 'cost' => 4.50],
+            ['name' => 'Tomate',       'unit' => 'kg',      'qty' => 15,  'min' => 3,  'cost' => 8.00],
+            ['name' => 'Cebolla',      'unit' => 'kg',      'qty' => 10,  'min' => 2,  'cost' => 6.00],
+            ['name' => 'Chiles',       'unit' => 'kg',      'qty' => 5,   'min' => 1,  'cost' => 12.00],
+            ['name' => 'Limón',        'unit' => 'unit',    'qty' => 80,  'min' => 20, 'cost' => 0.50],
+            ['name' => 'Plátano',      'unit' => 'unit',    'qty' => 50,  'min' => 10, 'cost' => 1.50],
+            ['name' => 'Queso',        'unit' => 'kg',      'qty' => 6,   'min' => 1,  'cost' => 45.00],
+        ])->mapWithKeys(fn ($i) => [
+            $i['name'] => Ingredient::create([
+                'name'             => $i['name'],
+                'unit'             => $i['unit'],
+                'quantity_on_hand' => $i['qty'],
+                'minimum_stock'    => $i['min'],
+                'cost_price'       => $i['cost'],
+                'active'           => true,
+            ]),
+        ]);
+
+        // ── Recetas BOM ──────────────────────────
+        $recipes = [
+            'Pepián de pollo'        => [['Pollo', 0.3], ['Tomate', 0.15], ['Cebolla', 0.05], ['Chiles', 0.02]],
+            'Kak-ik'                 => [['Pollo', 0.35], ['Tomate', 0.1], ['Chiles', 0.03]],
+            'Hilachas'               => [['Res', 0.25], ['Tomate', 0.1], ['Cebolla', 0.05]],
+            'Lomo a la parrilla'     => [['Res', 0.3], ['Tortillas', 4]],
+            'Pescado a la plancha'   => [['Pescado', 0.3], ['Limón', 2]],
+            'Ceviche de camarón'     => [['Camarón', 0.2], ['Limón', 4], ['Tomate', 0.1], ['Cebolla', 0.05]],
+            'Guacamol con totopos'   => [['Aguacate', 2], ['Tomate', 0.08], ['Tortillas', 6]],
+            'Tabla de quesos'        => [['Queso', 0.15]],
+            'Tamales colorados (3u)' => [['Pollo', 0.15], ['Tomate', 0.1]],
+            'Chiles rellenos'        => [['Chiles', 0.1], ['Queso', 0.08], ['Tomate', 0.1]],
+            'Rellenitos de plátano'  => [['Plátano', 3]],
+            'Mole de plátano'        => [['Plátano', 3], ['Queso', 0.05]],
+        ];
+
+        foreach ($recipes as $itemName => $lines) {
+            $menuItem = $menu->firstWhere('name', $itemName);
+            if (!$menuItem) continue;
+            foreach ($lines as [$ingName, $qty]) {
+                if (!isset($ingredients[$ingName])) continue;
+                RecipeItem::create([
+                    'menu_item_id'   => $menuItem->id,
+                    'ingredient_id'  => $ingredients[$ingName]->id,
+                    'quantity_used'  => $qty,
+                ]);
+            }
+        }
+
+        // ── Modifier groups + options ────────────
+        $coccion = ModifierGroup::create(['name' => 'Término de cocción', 'selection_type' => 'single', 'required' => true, 'display_order' => 1]);
+        foreach (['Término medio', 'Tres cuartos', 'Bien cocido'] as $i => $name) {
+            ModifierOption::create(['modifier_group_id' => $coccion->id, 'name' => $name, 'price_delta' => 0, 'display_order' => $i, 'active' => true]);
+        }
+
+        $extras = ModifierGroup::create(['name' => 'Extras', 'selection_type' => 'multi', 'required' => false, 'display_order' => 2]);
+        foreach ([['Queso extra', 8.00], ['Aguacate extra', 6.00], ['Tortillas extras (3u)', 4.00]] as $i => [$name, $price]) {
+            ModifierOption::create(['modifier_group_id' => $extras->id, 'name' => $name, 'price_delta' => $price, 'display_order' => $i, 'active' => true]);
+        }
+
+        $tamano = ModifierGroup::create(['name' => 'Tamaño', 'selection_type' => 'single', 'required' => true, 'display_order' => 1]);
+        foreach ([['Pequeño', -5.00], ['Mediano', 0.00], ['Grande', 8.00]] as $i => [$name, $price]) {
+            ModifierOption::create(['modifier_group_id' => $tamano->id, 'name' => $name, 'price_delta' => $price, 'display_order' => $i, 'active' => true]);
+        }
+
+        // Asignar grupos a ítems
+        $lomo = $menu->firstWhere('name', 'Lomo a la parrilla');
+        if ($lomo) $lomo->modifierGroups()->attach([$coccion->id => ['display_order' => 1], $extras->id => ['display_order' => 2]]);
+
+        $pepian = $menu->firstWhere('name', 'Pepián de pollo');
+        if ($pepian) $pepian->modifierGroups()->attach([$extras->id => ['display_order' => 1]]);
+
+        $limonada = $menu->firstWhere('name', 'Limonada con chía');
+        if ($limonada) $limonada->modifierGroups()->attach([$tamano->id => ['display_order' => 1]]);
     }
 }

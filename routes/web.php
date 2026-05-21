@@ -1,10 +1,14 @@
 <?php
 
+use App\Http\Controllers\Admin\AreaController;
 use App\Http\Controllers\Admin\FelInvoiceController;
 use App\Http\Controllers\Admin\IngredientController;
+use App\Http\Controllers\Admin\MenuItemController;
 use App\Http\Controllers\Admin\ModifierGroupController;
 use App\Http\Controllers\Admin\RecipeController;
 use App\Http\Controllers\Admin\ReportController;
+use App\Http\Controllers\Admin\TableController as AdminTableController;
+use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\CheckController;
 use App\Http\Controllers\CheckItemController;
@@ -92,6 +96,30 @@ Route::middleware('auth')->group(function () {
 
         // Reports
         Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+
+        // Menu items
+        Route::get('/menu-items', [MenuItemController::class, 'index'])->name('menu-items.index');
+        Route::post('/menu-items', [MenuItemController::class, 'store'])->name('menu-items.store');
+        Route::patch('/menu-items/{menuItem}', [MenuItemController::class, 'update'])->name('menu-items.update');
+        Route::delete('/menu-items/{menuItem}', [MenuItemController::class, 'destroy'])->name('menu-items.destroy');
+
+        // Areas
+        Route::get('/areas', [AreaController::class, 'index'])->name('areas.index');
+        Route::post('/areas', [AreaController::class, 'store'])->name('areas.store');
+        Route::patch('/areas/{area}', [AreaController::class, 'update'])->name('areas.update');
+        Route::delete('/areas/{area}', [AreaController::class, 'destroy'])->name('areas.destroy');
+
+        // Tables
+        Route::get('/tables', [AdminTableController::class, 'index'])->name('tables.index');
+        Route::post('/tables', [AdminTableController::class, 'store'])->name('tables.store');
+        Route::patch('/tables/{table}', [AdminTableController::class, 'update'])->name('tables.update');
+        Route::delete('/tables/{table}', [AdminTableController::class, 'destroy'])->name('tables.destroy');
+
+        // Users
+        Route::get('/users', [UserController::class, 'index'])->name('users.index');
+        Route::post('/users', [UserController::class, 'store'])->name('users.store');
+        Route::patch('/users/{user}', [UserController::class, 'update'])->name('users.update');
+        Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
 
         // Recipes + modifier assignment per menu item
         Route::get('/menu-items/{menuItem}/recipe', [RecipeController::class, 'show'])->name('recipes.show');
