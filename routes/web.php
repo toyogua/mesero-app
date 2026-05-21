@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Admin\IngredientController;
+use App\Http\Controllers\Admin\RecipeController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\CheckController;
 use App\Http\Controllers\CheckItemController;
@@ -51,4 +53,15 @@ Route::middleware('auth')->group(function () {
     // Stubs
     Route::get('/menu', fn () => Inertia::render('Menu/Placeholder'))->name('menu.index');
     Route::get('/reports', fn () => Inertia::render('Reports/Placeholder'))->name('reports.index');
+
+    // Admin — solo role:admin
+    Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
+        Route::get('/ingredients', [IngredientController::class, 'index'])->name('ingredients.index');
+        Route::post('/ingredients', [IngredientController::class, 'store'])->name('ingredients.store');
+        Route::patch('/ingredients/{ingredient}', [IngredientController::class, 'update'])->name('ingredients.update');
+        Route::delete('/ingredients/{ingredient}', [IngredientController::class, 'destroy'])->name('ingredients.destroy');
+
+        Route::get('/menu-items/{menuItem}/recipe', [RecipeController::class, 'show'])->name('recipes.show');
+        Route::put('/menu-items/{menuItem}/recipe', [RecipeController::class, 'upsert'])->name('recipes.upsert');
+    });
 });

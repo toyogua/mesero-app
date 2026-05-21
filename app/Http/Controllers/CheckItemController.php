@@ -8,6 +8,7 @@ use App\Events\KitchenQueueChanged;
 use App\Models\Check;
 use App\Models\CheckItem;
 use App\Models\MenuItem;
+use App\Services\InventoryService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -130,17 +131,25 @@ class CheckItemController extends Controller
     /**
      * Mesero: marcar servido (ready → served).
      */
-    public function served(CheckItem $item): RedirectResponse
+    public function served(CheckItem $item, InventoryService $inventory): RedirectResponse
     {
-        return $this->transition($item, CheckItemStatus::Served, 'servido');
+        return $this->transition($item, CheckItemStatus::Served, 'servido', $inventory);
     }
 
-    private function transition(CheckItem $item, CheckItemStatus $target, string $verb): RedirectResponse
-    {
+    private function transition(
+        CheckItem $item,
+        CheckItemStatus $target,
+        string $verb,
+        ?InventoryService $inventory = null,
+    ): RedirectResponse {
         try {
             $item->transitionTo($target);
         } catch (\RuntimeException $e) {
             throw ValidationException::withMessages(['item' => $e->getMessage()]);
+        }
+
+        if ($target === CheckItemStatus::Served && $inventory) {
+            $inventory->deductForItem($item);
         }
 
         $item->refresh();
