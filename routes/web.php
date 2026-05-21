@@ -1,8 +1,10 @@
 <?php
 
 use App\Http\Controllers\Admin\AreaController;
+use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\CashCloseController;
 use App\Http\Controllers\Admin\CheckHistoryController;
+use App\Http\Controllers\Admin\StockEntryController;
 use App\Http\Controllers\Admin\FelInvoiceController;
 use App\Http\Controllers\Admin\IngredientController;
 use App\Http\Controllers\Admin\MenuItemController;
@@ -90,6 +92,12 @@ Route::middleware('auth')->group(function () {
         // Cash closes
         Route::get('/cash-closes', [CashCloseController::class, 'index'])->name('cash-closes.index');
         Route::post('/cash-closes', [CashCloseController::class, 'store'])->name('cash-closes.store');
+
+        // Stock entries history
+        Route::get('/stock-entries', [StockEntryController::class, 'index'])->name('stock-entries.index');
+
+        // Audit log
+        Route::get('/audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index');
 
         // Modifier groups
         Route::get('/modifier-groups', [ModifierGroupController::class, 'index'])->name('modifier-groups.index');

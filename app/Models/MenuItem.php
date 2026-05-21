@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\HasAuditLog;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class MenuItem extends Model
 {
-    use HasFactory, HasUlids;
+    use HasFactory, HasUlids, HasAuditLog;
 
     protected $fillable = [
         'kitchen_station_id', 'name', 'description',

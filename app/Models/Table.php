@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\CheckStatus;
+use App\Traits\HasAuditLog;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Table extends Model
 {
-    use HasFactory, HasUlids;
+    use HasFactory, HasUlids, HasAuditLog;
 
     protected $fillable = ['area_id', 'name', 'capacity', 'active'];
 

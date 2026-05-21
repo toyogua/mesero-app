@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\HasAuditLog;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -9,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Ingredient extends Model
 {
-    use HasFactory, HasUlids;
+    use HasFactory, HasUlids, HasAuditLog;
 
     protected $fillable = [
         'name', 'unit', 'quantity_on_hand', 'minimum_stock', 'cost_price', 'active',
