@@ -46,6 +46,11 @@ class Check extends Model
         return $this->hasMany(CheckItem::class);
     }
 
+    public function felInvoice()
+    {
+        return $this->hasOne(FelInvoice::class);
+    }
+
     public function scopeOpen($query)
     {
         return $query->where('status', CheckStatus::Open);

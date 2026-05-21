@@ -7,9 +7,11 @@ use App\Enums\CheckStatus;
 use App\Events\CheckUpdated;
 use App\Events\FloorChanged;
 use App\Events\KitchenQueueChanged;
+use App\Jobs\IssueFelInvoice;
 use App\Models\Check;
 use App\Models\MenuItem;
 use App\Models\Table;
+use App\Services\Fel\FelService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -60,6 +62,7 @@ class CheckController extends Controller
             'items.menuItem',
             'items.kitchenStation:id,name,code',
             'items.modifiers',
+            'felInvoice',
         ]);
 
         $menu = MenuItem::query()
@@ -135,7 +138,7 @@ class CheckController extends Controller
     /**
      * Cerrar comanda. Solo permitido si todos los items están served o cancelled.
      */
-    public function close(Check $check): RedirectResponse
+    public function close(Check $check, FelService $fel): RedirectResponse
     {
         $this->assertMutable($check);
 
@@ -154,6 +157,11 @@ class CheckController extends Controller
             FloorChanged::dispatch($check->table->area_id, 'freed');
         }
         CheckUpdated::dispatch($check, 'closed');
+
+        if (config('restaurant.fel.enabled')) {
+            $invoice = $fel->createPending($check);
+            IssueFelInvoice::dispatch($invoice);
+        }
 
         return redirect()->route('floor.index')
             ->with('success', "Comanda {$check->number} cerrada");
@@ -204,6 +212,12 @@ class CheckController extends Controller
                 'id' => $check->waiter->id,
                 'name' => $check->waiter->name,
             ],
+            'fel' => $check->felInvoice ? [
+                'status' => $check->felInvoice->status->value,
+                'uuid'   => $check->felInvoice->uuid,
+                'serie'  => $check->felInvoice->serie,
+                'numero' => $check->felInvoice->numero,
+            ] : null,
             'items' => $check->items->map(fn ($i) => [
                 'id' => $i->id,
                 'name' => $i->name_snapshot,

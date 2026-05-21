@@ -114,6 +114,16 @@
         </tr>
     </table>
 
+    @if ($check->felInvoice?->uuid)
+    <hr class="divider">
+    <div style="font-size:10px; text-align:center; line-height:1.5;">
+        <strong>FACTURA ELECTRÓNICA</strong><br>
+        UUID: {{ $check->felInvoice->uuid }}<br>
+        Serie {{ $check->felInvoice->serie }} · No. {{ $check->felInvoice->numero }}<br>
+        Certificado: {{ $check->felInvoice->issued_at?->format('d/m/Y H:i') }}
+    </div>
+    @endif
+
     <div class="footer">¡Gracias por su visita!</div>
 </div>
 <script>window.onload = () => window.print();</script>

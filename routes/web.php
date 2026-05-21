@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\FelInvoiceController;
 use App\Http\Controllers\Admin\IngredientController;
 use App\Http\Controllers\Admin\ModifierGroupController;
 use App\Http\Controllers\Admin\RecipeController;
@@ -75,6 +76,10 @@ Route::middleware('auth')->group(function () {
         Route::post('/modifier-groups/{modifierGroup}/options', [ModifierGroupController::class, 'storeOption'])->name('modifier-groups.options.store');
         Route::patch('/modifier-groups/{modifierGroup}/options/{option}', [ModifierGroupController::class, 'updateOption'])->name('modifier-groups.options.update');
         Route::delete('/modifier-groups/{modifierGroup}/options/{option}', [ModifierGroupController::class, 'destroyOption'])->name('modifier-groups.options.destroy');
+
+        // FEL invoices
+        Route::get('/fel-invoices', [FelInvoiceController::class, 'index'])->name('fel-invoices.index');
+        Route::post('/fel-invoices/{invoice}/retry', [FelInvoiceController::class, 'retry'])->name('fel-invoices.retry');
 
         // Recipes + modifier assignment per menu item
         Route::get('/menu-items/{menuItem}/recipe', [RecipeController::class, 'show'])->name('recipes.show');

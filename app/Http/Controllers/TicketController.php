@@ -20,6 +20,7 @@ class TicketController extends Controller
             'items' => fn ($q) => $q->orderBy('created_at'),
             'items.modifiers',
             'items.kitchenStation:id,name',
+            'felInvoice',
         ]);
 
         $ivaRate = (float) config('restaurant.iva_rate');
