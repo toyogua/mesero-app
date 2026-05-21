@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AreaController;
+use App\Http\Controllers\Admin\CheckHistoryController;
 use App\Http\Controllers\Admin\FelInvoiceController;
 use App\Http\Controllers\Admin\IngredientController;
 use App\Http\Controllers\Admin\MenuItemController;
@@ -96,6 +97,9 @@ Route::middleware('auth')->group(function () {
 
         // Reports
         Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+
+        // Check history
+        Route::get('/checks', [CheckHistoryController::class, 'index'])->name('checks.index');
 
         // Menu items
         Route::get('/menu-items', [MenuItemController::class, 'index'])->name('menu-items.index');
