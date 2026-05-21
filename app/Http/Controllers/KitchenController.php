@@ -27,6 +27,7 @@ class KitchenController extends Controller
                 'check.table:id,name,area_id',
                 'check.table.area:id,name',
                 'kitchenStation:id,name,code',
+                'modifiers',
             ])
             ->orderBy('sent_at')
             ->get()
@@ -46,6 +47,10 @@ class KitchenController extends Controller
                 'area_name' => $i->check?->table?->area?->name,
                 'covers' => $i->check?->covers,
                 'opened_at' => $i->check?->opened_at?->toIso8601String(),
+                'modifiers' => $i->modifiers->map(fn ($m) => [
+                    'name' => $m->name_snapshot,
+                    'price_delta' => (float) $m->price_snapshot,
+                ])->values()->all(),
             ]);
 
         return Inertia::render('Kitchen/Display', [

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Ingredient;
 use App\Models\MenuItem;
+use App\Models\ModifierGroup;
 use App\Models\RecipeItem;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -29,6 +30,9 @@ class RecipeController extends Controller
         $ingredients = Ingredient::active()->orderBy('name')
             ->get(['id', 'name', 'unit', 'quantity_on_hand']);
 
+        $assignedGroupIds = $menuItem->modifierGroups()->pluck('modifier_groups.id')->all();
+        $allGroups = ModifierGroup::orderBy('name')->get(['id', 'name', 'selection_type', 'required']);
+
         return Inertia::render('Admin/Recipes/Show', [
             'menuItem' => [
                 'id' => $menuItem->id,
@@ -37,7 +41,27 @@ class RecipeController extends Controller
             ],
             'recipe' => $recipe,
             'ingredients' => $ingredients,
+            'modifier_groups' => $allGroups->map(fn ($g) => [
+                'id' => $g->id,
+                'name' => $g->name,
+                'selection_type' => $g->selection_type,
+                'required' => $g->required,
+                'assigned' => in_array($g->id, $assignedGroupIds, true),
+            ]),
         ]);
+    }
+
+    public function syncModifiers(Request $request, MenuItem $menuItem): RedirectResponse
+    {
+        $data = $request->validate([
+            'group_ids' => 'present|array',
+            'group_ids.*' => 'string|exists:modifier_groups,id',
+        ]);
+
+        $sync = collect($data['group_ids'])->mapWithKeys(fn ($id, $i) => [$id => ['display_order' => $i]]);
+        $menuItem->modifierGroups()->sync($sync);
+
+        return back()->with('success', 'Modificadores asignados.');
     }
 
     public function upsert(Request $request, MenuItem $menuItem): RedirectResponse

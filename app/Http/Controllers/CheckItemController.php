@@ -7,7 +7,9 @@ use App\Events\CheckUpdated;
 use App\Events\KitchenQueueChanged;
 use App\Models\Check;
 use App\Models\CheckItem;
+use App\Models\CheckItemModifier;
 use App\Models\MenuItem;
+use App\Models\ModifierOption;
 use App\Services\InventoryService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -28,12 +30,18 @@ class CheckItemController extends Controller
             'items.*.menu_item_id' => 'required|string|exists:menu_items,id',
             'items.*.quantity' => 'nullable|integer|min:1|max:50',
             'items.*.notes' => 'nullable|string|max:255',
+            'items.*.modifiers' => 'nullable|array',
+            'items.*.modifiers.*' => 'string|exists:modifier_options,id',
         ]);
 
         DB::transaction(function () use ($check, $validated) {
             foreach ($validated['items'] as $row) {
-                $menuItem = MenuItem::findOrFail($row['menu_item_id']);
-                CheckItem::create([
+                $menuItem = MenuItem::with('modifierGroups.options')->findOrFail($row['menu_item_id']);
+                $selectedIds = $row['modifiers'] ?? [];
+
+                $this->assertModifiersValid($menuItem, $selectedIds);
+
+                $item = CheckItem::create([
                     'check_id' => $check->id,
                     'menu_item_id' => $menuItem->id,
                     'kitchen_station_id' => $menuItem->kitchen_station_id,
@@ -43,6 +51,16 @@ class CheckItemController extends Controller
                     'notes' => $row['notes'] ?? null,
                     'status' => CheckItemStatus::Draft->value,
                 ]);
+
+                foreach ($selectedIds as $optionId) {
+                    $option = ModifierOption::find($optionId);
+                    CheckItemModifier::create([
+                        'check_item_id' => $item->id,
+                        'modifier_option_id' => $option->id,
+                        'name_snapshot' => $option->name,
+                        'price_snapshot' => $option->price_delta,
+                    ]);
+                }
             }
             $check->recalculate();
         });
@@ -161,6 +179,56 @@ class CheckItemController extends Controller
         CheckUpdated::dispatch($item->check, "item_{$target->value}");
 
         return back()->with('success', "Item marcado como {$verb}");
+    }
+
+    private function assertModifiersValid(MenuItem $menuItem, array $selectedIds): void
+    {
+        // Collect all valid option IDs for this menu item grouped by their group
+        $groupedOptions = [];
+        foreach ($menuItem->modifierGroups as $group) {
+            $groupedOptions[$group->id] = [
+                'group' => $group,
+                'valid_ids' => $group->options->where('active', true)->pluck('id')->all(),
+            ];
+        }
+
+        // Validate each selected option belongs to a group on this menu item
+        $allValidIds = collect($groupedOptions)->flatMap(fn ($g) => $g['valid_ids'])->all();
+        foreach ($selectedIds as $id) {
+            if (! in_array($id, $allValidIds, true)) {
+                throw ValidationException::withMessages([
+                    'items' => "El modificador seleccionado no pertenece a este plato.",
+                ]);
+            }
+        }
+
+        // Validate required groups have at least one selection
+        foreach ($groupedOptions as $groupId => $data) {
+            $group = $data['group'];
+            if (! $group->required) {
+                continue;
+            }
+            $hasSelection = count(array_intersect($selectedIds, $data['valid_ids'])) > 0;
+            if (! $hasSelection) {
+                throw ValidationException::withMessages([
+                    'items' => "El grupo \"{$group->name}\" es requerido.",
+                ]);
+            }
+        }
+
+        // Validate single-select groups have at most one selection
+        foreach ($groupedOptions as $groupId => $data) {
+            $group = $data['group'];
+            if ($group->selection_type !== 'single') {
+                continue;
+            }
+            $count = count(array_intersect($selectedIds, $data['valid_ids']));
+            if ($count > 1) {
+                throw ValidationException::withMessages([
+                    'items' => "El grupo \"{$group->name}\" solo permite una opción.",
+                ]);
+            }
+        }
     }
 
     private function assertMutable(Check $check): void

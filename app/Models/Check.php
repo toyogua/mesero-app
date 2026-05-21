@@ -71,9 +71,12 @@ class Check extends Model
     {
         $items = $this->items()
             ->where('status', '!=', CheckItemStatus::Cancelled->value)
+            ->with('modifiers')
             ->get();
 
-        $subtotal = $items->sum(fn ($i) => $i->price_snapshot * $i->quantity);
+        $subtotal = $items->sum(
+            fn ($i) => ($i->price_snapshot + $i->modifiers->sum('price_snapshot')) * $i->quantity
+        );
         $taxRate = (float) config('restaurant.iva_rate');
         $tax = round($subtotal * $taxRate, 2);
         $total = $subtotal + $tax + (float) $this->tip;

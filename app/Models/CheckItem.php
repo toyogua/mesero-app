@@ -43,6 +43,11 @@ class CheckItem extends Model
         return $this->belongsTo(KitchenStation::class);
     }
 
+    public function modifiers()
+    {
+        return $this->hasMany(CheckItemModifier::class);
+    }
+
     /**
      * Apply a state transition. Validates that the move is legal and
      * stamps the matching timestamp column. Throws if the transition is invalid.

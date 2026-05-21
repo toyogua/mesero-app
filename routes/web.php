@@ -1,12 +1,14 @@
 <?php
 
 use App\Http\Controllers\Admin\IngredientController;
+use App\Http\Controllers\Admin\ModifierGroupController;
 use App\Http\Controllers\Admin\RecipeController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\CheckController;
 use App\Http\Controllers\CheckItemController;
 use App\Http\Controllers\FloorController;
 use App\Http\Controllers\KitchenController;
+use App\Http\Controllers\TicketController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -54,6 +56,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/menu', fn () => Inertia::render('Menu/Placeholder'))->name('menu.index');
     Route::get('/reports', fn () => Inertia::render('Reports/Placeholder'))->name('reports.index');
 
+    // Print tickets (Blade — abrir en nueva pestaña)
+    Route::get('/checks/{check}/ticket', [TicketController::class, 'check'])->name('tickets.check');
+    Route::get('/kitchen/stations/{station}/ticket', [TicketController::class, 'station'])->name('tickets.station');
+
     // Admin — solo role:admin
     Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
         Route::get('/ingredients', [IngredientController::class, 'index'])->name('ingredients.index');
@@ -61,7 +67,18 @@ Route::middleware('auth')->group(function () {
         Route::patch('/ingredients/{ingredient}', [IngredientController::class, 'update'])->name('ingredients.update');
         Route::delete('/ingredients/{ingredient}', [IngredientController::class, 'destroy'])->name('ingredients.destroy');
 
+        // Modifier groups
+        Route::get('/modifier-groups', [ModifierGroupController::class, 'index'])->name('modifier-groups.index');
+        Route::post('/modifier-groups', [ModifierGroupController::class, 'store'])->name('modifier-groups.store');
+        Route::patch('/modifier-groups/{modifierGroup}', [ModifierGroupController::class, 'update'])->name('modifier-groups.update');
+        Route::delete('/modifier-groups/{modifierGroup}', [ModifierGroupController::class, 'destroy'])->name('modifier-groups.destroy');
+        Route::post('/modifier-groups/{modifierGroup}/options', [ModifierGroupController::class, 'storeOption'])->name('modifier-groups.options.store');
+        Route::patch('/modifier-groups/{modifierGroup}/options/{option}', [ModifierGroupController::class, 'updateOption'])->name('modifier-groups.options.update');
+        Route::delete('/modifier-groups/{modifierGroup}/options/{option}', [ModifierGroupController::class, 'destroyOption'])->name('modifier-groups.options.destroy');
+
+        // Recipes + modifier assignment per menu item
         Route::get('/menu-items/{menuItem}/recipe', [RecipeController::class, 'show'])->name('recipes.show');
         Route::put('/menu-items/{menuItem}/recipe', [RecipeController::class, 'upsert'])->name('recipes.upsert');
+        Route::put('/menu-items/{menuItem}/modifiers', [RecipeController::class, 'syncModifiers'])->name('recipes.modifiers.sync');
     });
 });

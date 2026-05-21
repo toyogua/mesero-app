@@ -59,11 +59,12 @@ class CheckController extends Controller
             'items' => fn ($q) => $q->orderBy('created_at'),
             'items.menuItem',
             'items.kitchenStation:id,name,code',
+            'items.modifiers',
         ]);
 
         $menu = MenuItem::query()
             ->active()
-            ->with('kitchenStation:id,name,code')
+            ->with('kitchenStation:id,name,code', 'modifierGroups.options')
             ->orderBy('category')
             ->orderBy('name')
             ->get()
@@ -76,6 +77,17 @@ class CheckController extends Controller
                     'price' => (float) $i->price,
                     'kitchen_station_id' => $i->kitchen_station_id,
                     'kitchen_station_name' => $i->kitchenStation->name,
+                    'modifier_groups' => $i->modifierGroups->map(fn ($g) => [
+                        'id' => $g->id,
+                        'name' => $g->name,
+                        'selection_type' => $g->selection_type,
+                        'required' => $g->required,
+                        'options' => $g->options->where('active', true)->map(fn ($o) => [
+                            'id' => $o->id,
+                            'name' => $o->name,
+                            'price_delta' => (float) $o->price_delta,
+                        ])->values(),
+                    ]),
                 ]),
             ])
             ->values();
@@ -203,7 +215,11 @@ class CheckController extends Controller
                 'sent_at' => $i->sent_at?->toIso8601String(),
                 'ready_at' => $i->ready_at?->toIso8601String(),
                 'served_at' => $i->served_at?->toIso8601String(),
-                'line_total' => (float) $i->price_snapshot * $i->quantity,
+                'modifiers' => $i->modifiers->map(fn ($m) => [
+                    'name' => $m->name_snapshot,
+                    'price_delta' => (float) $m->price_snapshot,
+                ])->values()->all(),
+                'line_total' => (float) (($i->price_snapshot + $i->modifiers->sum('price_snapshot')) * $i->quantity),
             ]),
         ];
     }

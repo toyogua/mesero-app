@@ -20,6 +20,53 @@ const tab = ref('items'); // móvil: 'items' | 'menu'
 const sending = ref(false);
 const closing = ref(false);
 
+// ── Modifier picker ──────────────────────────────────────────────────────────
+const pending = ref(null); // { menuItem, selections: { groupId: [optionId] } }
+
+function openPicker(menuItem) {
+    if (!menuItem.modifier_groups?.length) {
+        addItem(menuItem, []);
+        return;
+    }
+    const selections = {};
+    for (const g of menuItem.modifier_groups) {
+        selections[g.id] = [];
+    }
+    pending.value = { menuItem, selections };
+}
+
+function toggleOption(group, optionId) {
+    if (!pending.value) return;
+    const sel = pending.value.selections[group.id];
+    if (group.selection_type === 'single') {
+        pending.value.selections[group.id] = sel[0] === optionId ? [] : [optionId];
+    } else {
+        const idx = sel.indexOf(optionId);
+        if (idx === -1) sel.push(optionId);
+        else sel.splice(idx, 1);
+    }
+}
+
+function isSelected(groupId, optionId) {
+    return pending.value?.selections[groupId]?.includes(optionId) ?? false;
+}
+
+function canConfirm() {
+    if (!pending.value) return false;
+    for (const g of pending.value.menuItem.modifier_groups) {
+        if (g.required && pending.value.selections[g.id].length === 0) return false;
+    }
+    return true;
+}
+
+function confirmPicker() {
+    if (!pending.value || !canConfirm()) return;
+    const modifiers = Object.values(pending.value.selections).flat();
+    addItem(pending.value.menuItem, modifiers);
+    pending.value = null;
+}
+
+// ── Check item actions ────────────────────────────────────────────────────────
 const categoryLabels = {
     entradas: 'Entradas',
     platos_fuertes: 'Platos fuertes',
@@ -32,19 +79,13 @@ const draftCount = computed(() =>
 );
 
 const itemsByStatus = computed(() => {
-    const groups = {
-        draft: [],
-        kitchen: [],
-        ready: [],
-        served: [],
-        cancelled: [],
-    };
+    const groups = { draft: [], kitchen: [], ready: [], served: [], cancelled: [] };
     for (const i of props.check.items) {
         if (i.status === 'draft') groups.draft.push(i);
         else if (i.status === 'served') groups.served.push(i);
         else if (i.status === 'cancelled') groups.cancelled.push(i);
         else if (i.status === 'ready') groups.ready.push(i);
-        else groups.kitchen.push(i); // ordered + preparing
+        else groups.kitchen.push(i);
     }
     return groups;
 });
@@ -62,63 +103,48 @@ function currency(v) {
     return `Q ${Number(v || 0).toFixed(2)}`;
 }
 
-function addItem(menuItem) {
+function priceDelta(v) {
+    if (!v || v === 0) return '';
+    return v > 0 ? `+Q ${Number(v).toFixed(2)}` : `-Q ${Math.abs(v).toFixed(2)}`;
+}
+
+function addItem(menuItem, modifiers = []) {
     router.post(
         `/checks/${props.check.id}/items`,
-        { items: [{ menu_item_id: menuItem.id, quantity: 1 }] },
+        { items: [{ menu_item_id: menuItem.id, quantity: 1, modifiers }] },
         { preserveScroll: true, preserveState: false }
     );
 }
 
 function changeQty(item, delta) {
     const next = item.quantity + delta;
-    if (next < 1) {
-        removeItem(item);
-        return;
-    }
-    router.patch(
-        `/check-items/${item.id}`,
-        { quantity: next },
-        { preserveScroll: true, preserveState: false }
-    );
+    if (next < 1) { removeItem(item); return; }
+    router.patch(`/check-items/${item.id}`, { quantity: next }, { preserveScroll: true, preserveState: false });
 }
 
 function removeItem(item) {
-    router.delete(`/check-items/${item.id}`, {
-        preserveScroll: true,
-        preserveState: false,
-    });
+    router.delete(`/check-items/${item.id}`, { preserveScroll: true, preserveState: false });
 }
 
 function markServed(item) {
-    router.post(
-        `/check-items/${item.id}/served`,
-        {},
-        { preserveScroll: true, preserveState: false }
-    );
+    router.post(`/check-items/${item.id}/served`, {}, { preserveScroll: true, preserveState: false });
 }
 
 function send() {
     sending.value = true;
-    router.post(
-        `/checks/${props.check.id}/send`,
-        {},
-        {
-            preserveScroll: true,
-            preserveState: false,
-            onFinish: () => (sending.value = false),
-        }
-    );
+    router.post(`/checks/${props.check.id}/send`, {}, {
+        preserveScroll: true, preserveState: false, onFinish: () => (sending.value = false),
+    });
 }
 
 function close() {
     if (!confirm('¿Cerrar la cuenta? Esta acción no se puede deshacer.')) return;
     closing.value = true;
-    router.post(
-        `/checks/${props.check.id}/close`,
-        {},
-        { onFinish: () => (closing.value = false) }
-    );
+    router.post(`/checks/${props.check.id}/close`, {}, { onFinish: () => (closing.value = false) });
+}
+
+function printTicket() {
+    window.open(`/checks/${props.check.id}/ticket`, '_blank');
 }
 
 const filteredMenu = computed(() =>
@@ -132,12 +158,16 @@ const filteredMenu = computed(() =>
     <Head :title="`${check.number} — mesero-app`" />
     <AppLayout>
         <template #actions>
-            <Link
-                href="/floor"
-                class="text-xs uppercase tracking-widest text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] transition"
-            >
-                ← Salón
-            </Link>
+            <div class="flex items-center gap-3">
+                <button
+                    type="button"
+                    class="text-xs uppercase tracking-widest text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] transition"
+                    @click="printTicket"
+                >🖨 Imprimir</button>
+                <Link href="/floor" class="text-xs uppercase tracking-widest text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] transition">
+                    ← Salón
+                </Link>
+            </div>
         </template>
 
         <!-- Cabecera -->
@@ -154,24 +184,11 @@ const filteredMenu = computed(() =>
                     {{ check.covers }} comensales · Atiende {{ check.waiter.name }}
                 </div>
             </div>
-
             <div class="flex items-center gap-2">
-                <Button
-                    v-if="draftCount > 0"
-                    variant="primary"
-                    size="lg"
-                    :loading="sending"
-                    @click="send"
-                >
+                <Button v-if="draftCount > 0" variant="primary" size="lg" :loading="sending" @click="send">
                     Enviar a cocina ({{ draftCount }})
                 </Button>
-                <Button
-                    v-if="check.is_ready_to_close"
-                    variant="ghost"
-                    size="lg"
-                    :loading="closing"
-                    @click="close"
-                >
+                <Button v-if="check.is_ready_to_close" variant="ghost" size="lg" :loading="closing" @click="close">
                     Cerrar cuenta
                 </Button>
             </div>
@@ -180,22 +197,13 @@ const filteredMenu = computed(() =>
         <!-- Tabs móvil -->
         <div class="lg:hidden flex gap-2 mb-4">
             <button
-                v-for="opt in [
-                    { id: 'items', label: `Cuenta (${check.items.length})` },
-                    { id: 'menu', label: 'Menú' },
-                ]"
+                v-for="opt in [{ id: 'items', label: `Cuenta (${check.items.length})` }, { id: 'menu', label: 'Menú' }]"
                 :key="opt.id"
                 type="button"
                 class="flex-1 h-11 rounded-lg text-sm font-medium transition tap-target focus-ring"
-                :class="
-                    tab === opt.id
-                        ? 'bg-[var(--color-fg)] text-[var(--color-bg)]'
-                        : 'bg-[var(--color-surface)] text-[var(--color-fg-muted)]'
-                "
+                :class="tab === opt.id ? 'bg-[var(--color-fg)] text-[var(--color-bg)]' : 'bg-[var(--color-surface)] text-[var(--color-fg-muted)]'"
                 @click="tab = opt.id"
-            >
-                {{ opt.label }}
-            </button>
+            >{{ opt.label }}</button>
         </div>
 
         <div class="grid lg:grid-cols-[1fr_1.2fr] gap-6">
@@ -212,7 +220,6 @@ const filteredMenu = computed(() =>
                     </div>
 
                     <div v-else class="divide-y divide-[var(--color-border-faint)]">
-                        <!-- Sección por estado -->
                         <template v-for="(group, label) in {
                             'Borrador (no enviado)': itemsByStatus.draft,
                             'En cocina': itemsByStatus.kitchen,
@@ -221,38 +228,26 @@ const filteredMenu = computed(() =>
                             'Cancelados': itemsByStatus.cancelled,
                         }" :key="label">
                             <div v-if="group.length" class="py-2">
-                                <div class="px-5 py-2 text-[10px] uppercase tracking-widest text-[var(--color-fg-dim)]">
-                                    {{ label }}
-                                </div>
-                                <div
-                                    v-for="item in group"
-                                    :key="item.id"
-                                    class="px-5 py-3 flex items-center gap-4"
-                                >
+                                <div class="px-5 py-2 text-[10px] uppercase tracking-widest text-[var(--color-fg-dim)]">{{ label }}</div>
+                                <div v-for="item in group" :key="item.id" class="px-5 py-3 flex items-start gap-4">
                                     <!-- Qty controls (solo draft) -->
-                                    <div
-                                        v-if="item.status === 'draft'"
-                                        class="flex items-center gap-1 bg-[var(--color-surface-up)] rounded-lg p-0.5"
-                                    >
-                                        <button
-                                            type="button"
-                                            class="w-7 h-7 rounded-md hover:bg-[var(--color-surface)] focus-ring text-sm"
-                                            @click="changeQty(item, -1)"
-                                        >−</button>
+                                    <div v-if="item.status === 'draft'" class="flex items-center gap-1 bg-[var(--color-surface-up)] rounded-lg p-0.5 mt-0.5">
+                                        <button type="button" class="w-7 h-7 rounded-md hover:bg-[var(--color-surface)] focus-ring text-sm" @click="changeQty(item, -1)">−</button>
                                         <span class="font-numeric text-sm w-6 text-center">{{ item.quantity }}</span>
-                                        <button
-                                            type="button"
-                                            class="w-7 h-7 rounded-md hover:bg-[var(--color-surface)] focus-ring text-sm"
-                                            @click="changeQty(item, 1)"
-                                        >+</button>
+                                        <button type="button" class="w-7 h-7 rounded-md hover:bg-[var(--color-surface)] focus-ring text-sm" @click="changeQty(item, 1)">+</button>
                                     </div>
-                                    <span v-else class="font-numeric text-sm text-[var(--color-fg-dim)] w-6 text-center">
-                                        {{ item.quantity }}×
-                                    </span>
+                                    <span v-else class="font-numeric text-sm text-[var(--color-fg-dim)] w-6 text-center mt-1">{{ item.quantity }}×</span>
 
                                     <div class="flex-1 min-w-0">
                                         <div class="text-sm font-medium truncate">{{ item.name }}</div>
-                                        <div class="flex items-center gap-2 mt-0.5 text-[10px] text-[var(--color-fg-dim)]">
+                                        <!-- Modifiers -->
+                                        <div v-if="item.modifiers?.length" class="mt-0.5 space-y-0.5">
+                                            <div v-for="mod in item.modifiers" :key="mod.name" class="text-[10px] text-[var(--color-fg-muted)]">
+                                                + {{ mod.name }}
+                                                <span v-if="mod.price_delta" class="text-[var(--color-primary)]">{{ priceDelta(mod.price_delta) }}</span>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center gap-2 mt-1 text-[10px] text-[var(--color-fg-dim)]">
                                             <span>{{ item.kitchen_station?.name || '—' }}</span>
                                             <span v-if="item.notes" class="italic">· {{ item.notes }}</span>
                                         </div>
@@ -260,30 +255,13 @@ const filteredMenu = computed(() =>
 
                                     <div class="text-right">
                                         <div class="font-numeric text-sm">{{ currency(item.line_total) }}</div>
-                                        <Badge :tone="statusMeta[item.status].tone" size="sm">
-                                            {{ statusMeta[item.status].label }}
-                                        </Badge>
+                                        <Badge :tone="statusMeta[item.status].tone" size="sm">{{ statusMeta[item.status].label }}</Badge>
                                     </div>
 
-                                    <div class="flex items-center gap-1">
-                                        <button
-                                            v-if="item.status === 'ready'"
-                                            type="button"
-                                            class="h-9 px-3 rounded-lg text-xs uppercase tracking-widest font-medium bg-[var(--color-ok)] text-[oklch(15%_0.02_60)] hover:opacity-90 focus-ring"
-                                            @click="markServed(item)"
-                                        >
-                                            Servido
-                                        </button>
-                                        <button
-                                            v-if="item.status === 'draft' || item.status === 'ordered'"
-                                            type="button"
-                                            class="w-9 h-9 rounded-lg text-[var(--color-fg-dim)] hover:text-[var(--color-err)] hover:bg-[var(--color-surface-up)] focus-ring"
-                                            :title="item.status === 'draft' ? 'Eliminar' : 'Cancelar'"
-                                            @click="removeItem(item)"
-                                        >
-                                            <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22" />
-                                            </svg>
+                                    <div class="flex items-center gap-1 mt-0.5">
+                                        <button v-if="item.status === 'ready'" type="button" class="h-9 px-3 rounded-lg text-xs uppercase tracking-widest font-medium bg-[var(--color-ok)] text-[oklch(15%_0.02_60)] hover:opacity-90 focus-ring" @click="markServed(item)">Servido</button>
+                                        <button v-if="item.status === 'draft' || item.status === 'ordered'" type="button" class="w-9 h-9 rounded-lg text-[var(--color-fg-dim)] hover:text-[var(--color-err)] hover:bg-[var(--color-surface-up)] focus-ring" @click="removeItem(item)">
+                                            <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22" /></svg>
                                         </button>
                                     </div>
                                 </div>
@@ -294,20 +272,16 @@ const filteredMenu = computed(() =>
                     <!-- Totales -->
                     <div class="px-5 py-4 border-t border-[var(--color-border-faint)] space-y-1.5">
                         <div class="flex justify-between text-sm text-[var(--color-fg-muted)]">
-                            <span>Subtotal</span>
-                            <span class="font-numeric">{{ currency(check.subtotal) }}</span>
+                            <span>Subtotal</span><span class="font-numeric">{{ currency(check.subtotal) }}</span>
                         </div>
                         <div class="flex justify-between text-sm text-[var(--color-fg-muted)]">
-                            <span>IVA (12%)</span>
-                            <span class="font-numeric">{{ currency(check.tax) }}</span>
+                            <span>IVA (12%)</span><span class="font-numeric">{{ currency(check.tax) }}</span>
                         </div>
                         <div v-if="check.tip > 0" class="flex justify-between text-sm text-[var(--color-fg-muted)]">
-                            <span>Propina</span>
-                            <span class="font-numeric">{{ currency(check.tip) }}</span>
+                            <span>Propina</span><span class="font-numeric">{{ currency(check.tip) }}</span>
                         </div>
                         <div class="flex justify-between text-lg font-semibold pt-2 border-t border-[var(--color-border-faint)] mt-2">
-                            <span>Total</span>
-                            <span class="font-numeric">{{ currency(check.total) }}</span>
+                            <span>Total</span><span class="font-numeric">{{ currency(check.total) }}</span>
                         </div>
                     </div>
                 </div>
@@ -323,47 +297,94 @@ const filteredMenu = computed(() =>
                     <!-- Categorías -->
                     <div class="px-5 py-3 flex items-center gap-2 overflow-x-auto border-b border-[var(--color-border-faint)]">
                         <button
-                            v-for="g in menu"
-                            :key="g.category"
-                            type="button"
+                            v-for="g in menu" :key="g.category" type="button"
                             class="h-9 px-3 rounded-full text-xs font-medium uppercase tracking-widest transition border focus-ring whitespace-nowrap"
-                            :class="
-                                activeCategory === g.category
-                                    ? 'bg-[var(--color-primary)] text-[oklch(15%_0.02_60)] border-transparent'
-                                    : 'text-[var(--color-fg-muted)] border-[var(--color-border-faint)] hover:border-[var(--color-border)]'
-                            "
+                            :class="activeCategory === g.category
+                                ? 'bg-[var(--color-primary)] text-[oklch(15%_0.02_60)] border-transparent'
+                                : 'text-[var(--color-fg-muted)] border-[var(--color-border-faint)] hover:border-[var(--color-border)]'"
                             @click="activeCategory = g.category"
-                        >
-                            {{ categoryLabels[g.category] || g.category }}
-                        </button>
+                        >{{ categoryLabels[g.category] || g.category }}</button>
                     </div>
 
                     <!-- Items -->
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-2 p-3">
                         <template v-for="group in filteredMenu" :key="group.category">
                             <button
-                                v-for="m in group.items"
-                                :key="m.id"
+                                v-for="m in group.items" :key="m.id"
                                 type="button"
-                                class="text-left p-3 rounded-xl bg-[var(--color-surface-up)] hover:bg-[color-mix(in_oklch,var(--color-primary)_15%,var(--color-surface-up))] active:scale-[0.97] transition-all focus-ring tap-target"
-                                @click="addItem(m)"
+                                class="text-left p-3 rounded-xl bg-[var(--color-surface-up)] hover:bg-[color-mix(in_oklch,var(--color-primary)_15%,var(--color-surface-up))] active:scale-[0.97] transition-all focus-ring tap-target relative"
+                                @click="openPicker(m)"
                             >
-                                <div class="text-sm font-medium leading-tight mb-2 line-clamp-2">
-                                    {{ m.name }}
-                                </div>
+                                <div class="text-sm font-medium leading-tight mb-2 line-clamp-2">{{ m.name }}</div>
                                 <div class="flex items-center justify-between">
-                                    <span class="font-numeric text-sm text-[var(--color-primary)]">
-                                        {{ currency(m.price) }}
-                                    </span>
-                                    <span class="text-[10px] uppercase tracking-widest text-[var(--color-fg-dim)]">
-                                        {{ m.kitchen_station_name }}
-                                    </span>
+                                    <span class="font-numeric text-sm text-[var(--color-primary)]">{{ currency(m.price) }}</span>
+                                    <span class="text-[10px] uppercase tracking-widest text-[var(--color-fg-dim)]">{{ m.kitchen_station_name }}</span>
                                 </div>
+                                <!-- Indicator when item has modifier groups -->
+                                <span
+                                    v-if="m.modifier_groups?.length"
+                                    class="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-[var(--color-primary)]"
+                                    title="Tiene modificadores"
+                                />
                             </button>
                         </template>
                     </div>
                 </div>
             </section>
         </div>
+
+        <!-- ── Modifier Picker Modal ── -->
+        <Teleport to="body">
+            <div
+                v-if="pending"
+                class="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+                @click.self="pending = null"
+            >
+                <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="pending = null" />
+                <div class="relative w-full sm:max-w-md bg-[var(--color-bg)] rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden z-10">
+                    <!-- Header -->
+                    <div class="px-6 pt-6 pb-4 border-b border-[var(--color-border-faint)]">
+                        <h3 class="text-lg font-semibold tracking-tight">{{ pending.menuItem.name }}</h3>
+                        <p class="text-sm text-[var(--color-fg-muted)] mt-0.5">{{ currency(pending.menuItem.price) }} · personalizá tu pedido</p>
+                    </div>
+
+                    <!-- Groups -->
+                    <div class="px-6 py-4 max-h-[60vh] overflow-y-auto space-y-5">
+                        <div v-for="g in pending.menuItem.modifier_groups" :key="g.id">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-sm font-semibold">{{ g.name }}</span>
+                                <Badge :tone="g.required ? 'warn' : 'neutral'" size="sm">
+                                    {{ g.required ? 'Requerido' : 'Opcional' }}
+                                </Badge>
+                                <span class="text-[10px] text-[var(--color-fg-dim)] ml-auto">
+                                    {{ g.selection_type === 'single' ? 'Elegí uno' : 'Elegí varios' }}
+                                </span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button
+                                    v-for="opt in g.options"
+                                    :key="opt.id"
+                                    type="button"
+                                    class="h-12 px-3 rounded-xl text-sm font-medium transition border text-left flex items-center justify-between"
+                                    :class="isSelected(g.id, opt.id)
+                                        ? 'bg-[var(--color-primary)] text-[oklch(15%_0.02_60)] border-transparent'
+                                        : 'bg-[var(--color-surface)] border-[var(--color-border-faint)] hover:border-[var(--color-border)] text-[var(--color-fg)]'"
+                                    @click="toggleOption(g, opt.id)"
+                                >
+                                    <span>{{ opt.name }}</span>
+                                    <span v-if="opt.price_delta" class="text-[10px] opacity-75">{{ priceDelta(opt.price_delta) }}</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="px-6 pb-6 pt-4 border-t border-[var(--color-border-faint)] flex gap-3">
+                        <Button variant="ghost" class="flex-1" @click="pending = null">Cancelar</Button>
+                        <Button class="flex-1" :disabled="!canConfirm()" @click="confirmPicker">Agregar</Button>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
     </AppLayout>
 </template>

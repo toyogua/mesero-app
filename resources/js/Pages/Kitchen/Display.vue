@@ -201,6 +201,11 @@ const statusMeta = {
                         </div>
                         <div class="flex-1 min-w-0">
                             <div class="text-sm font-medium truncate">{{ item.name }}</div>
+                            <div v-if="item.modifiers?.length" class="mt-0.5 space-y-0.5">
+                                <div v-for="mod in item.modifiers" :key="mod.name" class="text-[10px] font-semibold text-[var(--color-warn)]">
+                                    + {{ mod.name }}
+                                </div>
+                            </div>
                             <div class="flex items-center gap-2 mt-1">
                                 <Badge :tone="statusMeta[item.status].tone" size="sm">
                                     {{ statusMeta[item.status].label }}
