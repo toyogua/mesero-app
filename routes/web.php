@@ -3,6 +3,8 @@
 use App\Http\Controllers\Admin\AreaController;
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\CashCloseController;
+use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\KitchenStationController;
 use App\Http\Controllers\Admin\CheckHistoryController;
 use App\Http\Controllers\Admin\StockEntryController;
 use App\Http\Controllers\Admin\FelInvoiceController;
@@ -10,15 +12,24 @@ use App\Http\Controllers\Admin\IngredientController;
 use App\Http\Controllers\Admin\MenuItemController;
 use App\Http\Controllers\Admin\ModifierGroupController;
 use App\Http\Controllers\Admin\RecipeController;
+use App\Http\Controllers\Admin\RatingReportController;
 use App\Http\Controllers\Admin\ReportController;
+use App\Http\Controllers\Admin\TakeoutReportController;
+use App\Http\Controllers\RatingController;
+use App\Http\Controllers\Admin\WaiterReportController;
 use App\Http\Controllers\Admin\TableController as AdminTableController;
+use App\Http\Controllers\Admin\BusinessSettingController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\CheckController;
 use App\Http\Controllers\CheckItemController;
 use App\Http\Controllers\FloorController;
 use App\Http\Controllers\KitchenController;
+use App\Http\Controllers\MenuController;
+use App\Http\Controllers\OnlineOrderController;
+use App\Http\Controllers\OrderDisplayController;
 use App\Http\Controllers\SplitController;
+use App\Http\Controllers\TakeoutController;
 use App\Http\Controllers\TicketController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -37,9 +48,27 @@ Route::post('/logout', [LoginController::class, 'logout'])
     ->middleware('auth')
     ->name('logout');
 
+// Menú público — sin autenticación (acceso desde QR)
+Route::get('/menu', [MenuController::class, 'index'])->name('menu.index');
+Route::get('/order', [OnlineOrderController::class, 'index'])->name('order.index');
+Route::post('/order', [OnlineOrderController::class, 'store'])->name('order.store');
+
+Route::get('/rate/{check}', [RatingController::class, 'show'])->name('rate.show');
+Route::post('/rate/{check}', [RatingController::class, 'store'])->name('rate.store');
+
+// Display de órdenes — pantalla TV para clientes (sin auth)
+Route::get('/display', [OrderDisplayController::class, 'index'])->name('display.index');
+Route::post('/display/unlock', [OrderDisplayController::class, 'unlock'])->name('display.unlock');
+
 /*
  * Autenticadas
  */
+// Cajero + Admin — cierre de caja
+Route::middleware(['auth', 'role:admin,cashier'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/cash-closes', [CashCloseController::class, 'index'])->name('cash-closes.index');
+    Route::post('/cash-closes', [CashCloseController::class, 'store'])->name('cash-closes.store');
+});
+
 Route::middleware('auth')->group(function () {
     // Salón
     Route::get('/floor', [FloorController::class, 'index'])->name('floor.index');
@@ -59,9 +88,13 @@ Route::middleware('auth')->group(function () {
     Route::post('/check-items/{item}/take', [CheckItemController::class, 'take'])->name('check-items.take');
     Route::post('/check-items/{item}/ready', [CheckItemController::class, 'ready'])->name('check-items.ready');
     Route::post('/check-items/{item}/served', [CheckItemController::class, 'served'])->name('check-items.served');
+    Route::post('/checks/{check}/items/bulk-transition', [CheckItemController::class, 'bulkTransition'])->name('check-items.bulk-transition');
 
     // Cocina
     Route::get('/kitchen', [KitchenController::class, 'index'])->name('kitchen.index');
+
+    Route::get('/takeout', [TakeoutController::class, 'index'])->name('takeout.index');
+    Route::post('/takeout', [TakeoutController::class, 'store'])->name('takeout.store');
 
     // Tip
     Route::patch('/checks/{check}/tip', [CheckController::class, 'tip'])->name('checks.tip');
@@ -69,13 +102,16 @@ Route::middleware('auth')->group(function () {
     // Notes
     Route::patch('/checks/{check}/notes', [CheckController::class, 'notes'])->name('checks.notes');
 
+    // Void (admin only — enforced in controller)
+    Route::post('/checks/{check}/void', [CheckController::class, 'void'])->name('checks.void');
+
+    // Transfer to another table
+    Route::patch('/checks/{check}/transfer', [CheckController::class, 'transfer'])->name('checks.transfer');
+
     // Splits
     Route::post('/checks/{check}/splits', [SplitController::class, 'store'])->name('splits.store');
     Route::patch('/check-splits/{split}/pay', [SplitController::class, 'pay'])->name('splits.pay');
     Route::delete('/checks/{check}/splits', [SplitController::class, 'destroy'])->name('splits.destroy');
-
-    // Stubs
-    Route::get('/menu', fn () => Inertia::render('Menu/Placeholder'))->name('menu.index');
 
     // Print tickets (Blade — abrir en nueva pestaña)
     Route::get('/checks/{check}/ticket', [TicketController::class, 'check'])->name('tickets.check');
@@ -83,15 +119,16 @@ Route::middleware('auth')->group(function () {
 
     // Admin — solo role:admin
     Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
+        Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+        Route::get('/qr-menu', fn () => inertia('Admin/QrMenu'))->name('qr-menu');
+
         Route::get('/ingredients', [IngredientController::class, 'index'])->name('ingredients.index');
         Route::post('/ingredients', [IngredientController::class, 'store'])->name('ingredients.store');
         Route::patch('/ingredients/{ingredient}', [IngredientController::class, 'update'])->name('ingredients.update');
         Route::delete('/ingredients/{ingredient}', [IngredientController::class, 'destroy'])->name('ingredients.destroy');
         Route::post('/ingredients/{ingredient}/restock', [IngredientController::class, 'restock'])->name('ingredients.restock');
 
-        // Cash closes
-        Route::get('/cash-closes', [CashCloseController::class, 'index'])->name('cash-closes.index');
-        Route::post('/cash-closes', [CashCloseController::class, 'store'])->name('cash-closes.store');
+        // Cash closes — también accesible para cajero (ver grupo role:admin,cashier abajo)
 
         // Stock entries history
         Route::get('/stock-entries', [StockEntryController::class, 'index'])->name('stock-entries.index');
@@ -107,13 +144,25 @@ Route::middleware('auth')->group(function () {
         Route::post('/modifier-groups/{modifierGroup}/options', [ModifierGroupController::class, 'storeOption'])->name('modifier-groups.options.store');
         Route::patch('/modifier-groups/{modifierGroup}/options/{option}', [ModifierGroupController::class, 'updateOption'])->name('modifier-groups.options.update');
         Route::delete('/modifier-groups/{modifierGroup}/options/{option}', [ModifierGroupController::class, 'destroyOption'])->name('modifier-groups.options.destroy');
+        Route::post('/modifier-groups/{modifierGroup}/options/{option}/ingredients', [ModifierGroupController::class, 'storeOptionIngredient'])->name('modifier-groups.options.ingredients.store');
+        Route::delete('/modifier-groups/{modifierGroup}/options/{option}/ingredients/{line}', [ModifierGroupController::class, 'destroyOptionIngredient'])->name('modifier-groups.options.ingredients.destroy');
+
+        // Kitchen stations
+        Route::get('/kitchen-stations', [KitchenStationController::class, 'index'])->name('kitchen-stations.index');
+        Route::post('/kitchen-stations', [KitchenStationController::class, 'store'])->name('kitchen-stations.store');
+        Route::patch('/kitchen-stations/{kitchenStation}', [KitchenStationController::class, 'update'])->name('kitchen-stations.update');
+        Route::delete('/kitchen-stations/{kitchenStation}', [KitchenStationController::class, 'destroy'])->name('kitchen-stations.destroy');
 
         // FEL invoices
         Route::get('/fel-invoices', [FelInvoiceController::class, 'index'])->name('fel-invoices.index');
         Route::post('/fel-invoices/{invoice}/retry', [FelInvoiceController::class, 'retry'])->name('fel-invoices.retry');
+        Route::post('/fel-invoices/{invoice}/cancel', [FelInvoiceController::class, 'cancel'])->name('fel-invoices.cancel');
 
         // Reports
         Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+        Route::get('/reports/waiters', [WaiterReportController::class, 'index'])->name('reports.waiters');
+        Route::get('/reports/takeout', [TakeoutReportController::class, 'index'])->name('reports.takeout');
+        Route::get('/reports/ratings', [RatingReportController::class, 'index'])->name('reports.ratings');
 
         // Check history
         Route::get('/checks', [CheckHistoryController::class, 'index'])->name('checks.index');
@@ -145,6 +194,11 @@ Route::middleware('auth')->group(function () {
         // Recipes + modifier assignment per menu item
         Route::get('/menu-items/{menuItem}/recipe', [RecipeController::class, 'show'])->name('recipes.show');
         Route::put('/menu-items/{menuItem}/recipe', [RecipeController::class, 'upsert'])->name('recipes.upsert');
-        Route::put('/menu-items/{menuItem}/modifiers', [RecipeController::class, 'syncModifiers'])->name('recipes.modifiers.sync');
+        Route::post('/menu-items/{menuItem}/modifiers', [RecipeController::class, 'syncModifiers'])->name('recipes.modifiers.sync');
+
+        // Business settings
+        Route::get('/settings', [BusinessSettingController::class, 'edit'])->name('settings.edit');
+        Route::post('/settings', [BusinessSettingController::class, 'update'])->name('settings.update');
+        Route::delete('/settings/logo', [BusinessSettingController::class, 'deleteLogo'])->name('settings.logo.delete');
     });
 });

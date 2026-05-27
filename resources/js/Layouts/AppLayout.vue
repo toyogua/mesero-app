@@ -1,6 +1,8 @@
 <script setup>
 import { Link, usePage, router } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
+import Toast from '@/Components/UI/Toast.vue';
+import { useToast } from '@/composables/useToast.js';
 
 const props = defineProps({
     title: String,
@@ -8,25 +10,113 @@ const props = defineProps({
 
 const page = usePage();
 const user = computed(() => page.props.auth?.user);
+const role = computed(() => user.value?.role);
 
-const nav = computed(() => {
-    const role = user.value?.role;
-    const items = [
-        { label: 'Salón', href: '/floor', icon: 'grid', roles: ['waiter', 'admin'] },
-        { label: 'Cocina', href: '/kitchen', icon: 'flame', roles: ['kitchen', 'admin'] },
-        { label: 'Menú', href: '/menu', icon: 'book', roles: ['admin'] },
-        { label: 'Reportes', href: '/reports', icon: 'chart', roles: ['admin'] },
+// ── Nav structure ─────────────────────────────────────────────────────────────
+
+const OPERATIONAL = [
+    { label: 'Salón',        href: '/floor',   roles: ['waiter', 'admin', 'cashier'] },
+    { label: 'Para llevar',  href: '/takeout', roles: ['waiter', 'admin', 'cashier'] },
+    { label: 'Cocina',       href: '/kitchen', roles: ['kitchen', 'admin'] },
+];
+
+const ADMIN_GROUPS = [
+    {
+        label: 'Operación',
+        items: [
+            { label: 'Dashboard',       href: '/admin/dashboard' },
+            { label: 'Reportes',        href: '/admin/reports' },
+            { label: 'Para llevar',     href: '/admin/reports/takeout' },
+            { label: 'Calificaciones',  href: '/admin/reports/ratings' },
+            { label: 'Meseros',         href: '/admin/reports/waiters' },
+            { label: 'Comandas',        href: '/admin/checks' },
+            { label: 'Cierre de caja',  href: '/admin/cash-closes' },
+            { label: 'FEL',             href: '/admin/fel-invoices' },
+        ],
+    },
+    {
+        label: 'Catálogos',
+        items: [
+            { label: 'Menú',            href: '/admin/menu-items' },
+            { label: 'Ingredientes',    href: '/admin/ingredients' },
+            { label: 'Modificadores',   href: '/admin/modifier-groups' },
+            { label: 'Áreas',           href: '/admin/areas' },
+            { label: 'Mesas',           href: '/admin/tables' },
+                { label: 'Estaciones',      href: '/admin/kitchen-stations' },
+            { label: 'Usuarios',        href: '/admin/users' },
+        ],
+    },
+    {
+        label: 'Inventario',
+        items: [
+            { label: 'Entradas',        href: '/admin/stock-entries' },
+        ],
+    },
+    {
+        label: 'Sistema',
+        items: [
+            { label: 'Configuración',   href: '/admin/settings' },
+            { label: 'Auditoría',       href: '/admin/audit-logs' },
+            { label: 'QR Menú',         href: '/admin/qr-menu' },
+            { label: 'Display TV',      href: '/display' },
+            { label: 'Ordenar en línea', href: '/order' },
+        ],
+    },
+];
+
+const navGroups = computed(() => {
+    const operational = OPERATIONAL.filter(i => i.roles.includes(role.value ?? ''));
+
+    if (role.value === 'cashier') {
+        return [
+            { label: null, items: operational },
+            { label: null, items: [{ label: 'Cierre de caja', href: '/admin/cash-closes' }] },
+        ];
+    }
+
+    if (role.value !== 'admin') {
+        return operational.length ? [{ label: null, items: operational }] : [];
+    }
+
+    return [
+        { label: null, items: operational },
+        ...ADMIN_GROUPS,
     ];
-    return items.filter((i) => !role || i.roles.includes(role));
 });
 
-const isActive = (href) => page.url.startsWith(href);
+// Active: exact match for short paths, startsWith for nested admin sections
+function isActive(href) {
+    const url = page.url.split('?')[0];
+    if (href === '/floor' || href === '/kitchen') return url === href;
+    return url.startsWith(href);
+}
 
 const open = ref(false);
 
 function logout() {
     router.post('/logout');
 }
+
+// ── Stock alerts (realtime) ───────────────────────────────────────────────────
+const { add: addToast } = useToast();
+
+function handleStockAlert({ ingredients }) {
+    ingredients.forEach((ing) => {
+        const tone    = ing.negative ? 'err' : 'warn';
+        const status  = ing.negative
+            ? `sin stock (${ing.quantity_on_hand} ${ing.unit})`
+            : `stock bajo mínimo (${ing.quantity_on_hand} / ${ing.minimum_stock} ${ing.unit})`;
+        addToast(`⚠ ${ing.name}: ${status}`, tone, 8000);
+    });
+}
+
+onMounted(() => {
+    window.Echo?.channel('display').listen('.StockAlert', handleStockAlert);
+});
+
+onUnmounted(() => {
+    window.Echo?.channel('display').stopListening('.StockAlert', handleStockAlert);
+});
 </script>
 
 <template>
@@ -34,13 +124,11 @@ function logout() {
         <!-- Sidebar -->
         <aside
             class="fixed lg:sticky top-0 left-0 h-screen z-40 transition-transform duration-300"
-            :class="[
-                open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
-            ]"
+            :class="open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
         >
             <div class="w-64 h-full bg-[var(--color-surface-down)] border-r border-[var(--color-border-faint)] flex flex-col">
                 <!-- Logo -->
-                <div class="h-16 px-5 flex items-center gap-3 border-b border-[var(--color-border-faint)]">
+                <div class="h-16 px-5 flex items-center gap-3 border-b border-[var(--color-border-faint)] shrink-0">
                     <div class="w-9 h-9 rounded-lg flex items-center justify-center font-bold text-[oklch(15%_0.02_60)]"
                          style="background: linear-gradient(135deg, var(--color-primary), var(--color-primary-down));">
                         m
@@ -52,28 +140,35 @@ function logout() {
                 </div>
 
                 <!-- Nav -->
-                <nav class="flex-1 px-3 py-4 space-y-1">
-                    <Link
-                        v-for="item in nav"
-                        :key="item.href"
-                        :href="item.href"
-                        class="group flex items-center gap-3 px-3 h-11 rounded-lg tap-target transition-all text-sm font-medium"
-                        :class="[
-                            isActive(item.href)
-                                ? 'bg-[var(--color-surface-up)] text-[var(--color-fg)]'
-                                : 'text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:bg-[var(--color-surface)]',
-                        ]"
-                    >
-                        <span class="w-1 h-5 rounded-full transition-all"
-                              :class="isActive(item.href) ? 'bg-[var(--color-primary)]' : 'bg-transparent'" />
-                        {{ item.label }}
-                    </Link>
+                <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-5">
+                    <div v-for="group in navGroups" :key="group.label ?? '_op'" class="space-y-0.5">
+                        <!-- Section label -->
+                        <div v-if="group.label"
+                             class="px-3 mb-1.5 text-[10px] uppercase tracking-widest font-semibold text-[var(--color-fg-dim)]">
+                            {{ group.label }}
+                        </div>
+
+                        <Link
+                            v-for="item in group.items"
+                            :key="item.href"
+                            :href="item.href"
+                            class="flex items-center gap-3 px-3 h-9 rounded-lg transition-all text-sm"
+                            :class="isActive(item.href)
+                                ? 'bg-[var(--color-surface-up)] text-[var(--color-fg)] font-medium'
+                                : 'text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:bg-[var(--color-surface)]'"
+                            @click="open = false"
+                        >
+                            <span class="w-1 h-4 rounded-full shrink-0 transition-all"
+                                  :class="isActive(item.href) ? 'bg-[var(--color-primary)]' : 'bg-transparent'" />
+                            {{ item.label }}
+                        </Link>
+                    </div>
                 </nav>
 
                 <!-- User -->
-                <div v-if="user" class="border-t border-[var(--color-border-faint)] p-3">
+                <div v-if="user" class="border-t border-[var(--color-border-faint)] p-3 shrink-0">
                     <div class="flex items-center gap-3 px-2 py-2">
-                        <div class="w-9 h-9 rounded-full bg-[var(--color-surface-up)] flex items-center justify-center text-sm font-medium">
+                        <div class="w-8 h-8 rounded-full bg-[var(--color-surface-up)] flex items-center justify-center text-sm font-medium shrink-0">
                             {{ user.name?.charAt(0).toUpperCase() }}
                         </div>
                         <div class="flex-1 min-w-0">
@@ -82,7 +177,7 @@ function logout() {
                         </div>
                         <button
                             type="button"
-                            class="p-2 rounded-md text-[var(--color-fg-dim)] hover:text-[var(--color-fg)] hover:bg-[var(--color-surface)] focus-ring"
+                            class="p-2 rounded-md text-[var(--color-fg-dim)] hover:text-[var(--color-fg)] hover:bg-[var(--color-surface)]"
                             title="Salir"
                             @click="logout"
                         >
@@ -95,7 +190,7 @@ function logout() {
             </div>
         </aside>
 
-        <!-- Overlay para móvil -->
+        <!-- Mobile overlay -->
         <div
             v-if="open"
             class="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm lg:hidden"
@@ -108,7 +203,7 @@ function logout() {
             <header class="sticky top-0 z-20 h-16 flex items-center gap-3 px-5 lg:px-8 liquid-glass">
                 <button
                     type="button"
-                    class="lg:hidden p-2 -ml-2 rounded-md tap-target hover:bg-[var(--color-surface)]"
+                    class="lg:hidden p-2 -ml-2 rounded-md hover:bg-[var(--color-surface)]"
                     @click="open = !open"
                 >
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -128,4 +223,5 @@ function logout() {
             </main>
         </div>
     </div>
+    <Toast />
 </template>

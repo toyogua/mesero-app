@@ -1,4 +1,5 @@
 import Echo from 'laravel-echo';
+import * as Ably from 'ably';
 import axios from 'axios';
 
 const driver = import.meta.env.VITE_BROADCAST_CONNECTION || 'null';
@@ -23,14 +24,10 @@ if (driver === 'reverb') {
         authEndpoint: '/broadcasting/auth',
     });
 } else if (driver === 'ably') {
-    const Ably = (await import('ably')).default;
-    window.Ably = Ably;
+    const { default: AblyEcho } = await import('@ably/laravel-echo');
 
-    echo = new Echo({
-        broadcaster: 'ably',
-        key: import.meta.env.VITE_ABLY_PUBLIC_KEY,
-        authEndpoint: '/broadcasting/auth',
-    });
+    window.Ably = Ably;
+    echo = new AblyEcho({ broadcaster: 'ably' });
 }
 
 window.Echo = echo;

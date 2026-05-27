@@ -142,6 +142,7 @@ function currency(v) { return `Q ${Number(v).toFixed(2)}`; }
                                 <td class="table-td text-right">
                                     <div class="flex gap-1 justify-end">
                                         <Button variant="ghost" size="sm" @click="openEdit(item)">Editar</Button>
+                                        <Button variant="ghost" size="sm" as="a" :href="`/admin/menu-items/${item.id}/recipe`">Receta</Button>
                                         <Button v-if="item.active" variant="ghost" size="sm" @click="deactivate(item)">Desactivar</Button>
                                     </div>
                                 </td>
@@ -220,6 +221,7 @@ function currency(v) { return `Q ${Number(v).toFixed(2)}`; }
 </template>
 
 <style scoped>
+@reference "../../../../css/app.css";
 .table-th { @apply text-left px-4 py-3 font-medium text-[var(--color-fg-muted)] uppercase tracking-wider text-xs; }
 .table-td { @apply px-4 py-3; }
 .form-label { @apply block text-xs text-[var(--color-fg-muted)] mb-1; }

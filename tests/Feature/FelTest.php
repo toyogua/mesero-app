@@ -180,4 +180,61 @@ class FelTest extends TestCase
                 ->has('invoices.data', 1)
             );
     }
+
+    #[Test]
+    public function issued_invoice_can_be_cancelled_with_reason(): void
+    {
+        config(['restaurant.fel.enabled' => true, 'restaurant.fel.adapter' => 'null']);
+
+        $admin   = User::factory()->create(['role' => UserRole::Admin->value, 'active' => true]);
+        $invoice = FelInvoice::factory()->issued()->create(['check_id' => $this->check->id]);
+
+        $this->actingAs($admin)
+            ->post("/admin/fel-invoices/{$invoice->id}/cancel", [
+                'reason' => 'Error en NIT del receptor',
+            ])
+            ->assertRedirect();
+
+        $invoice->refresh();
+        $this->assertSame(FelStatus::Cancelled, $invoice->status);
+        $this->assertSame('Error en NIT del receptor', $invoice->cancel_reason);
+        $this->assertNotNull($invoice->cancelled_at);
+    }
+
+    #[Test]
+    public function cancel_requires_reason(): void
+    {
+        $admin   = User::factory()->create(['role' => UserRole::Admin->value, 'active' => true]);
+        $invoice = FelInvoice::factory()->issued()->create(['check_id' => $this->check->id]);
+
+        $this->actingAs($admin)
+            ->post("/admin/fel-invoices/{$invoice->id}/cancel", ['reason' => ''])
+            ->assertSessionHasErrors('reason');
+    }
+
+    #[Test]
+    public function pending_invoice_cannot_be_cancelled(): void
+    {
+        $admin   = User::factory()->create(['role' => UserRole::Admin->value, 'active' => true]);
+        $invoice = FelInvoice::factory()->create(['check_id' => $this->check->id]);
+
+        $this->actingAs($admin)
+            ->post("/admin/fel-invoices/{$invoice->id}/cancel", [
+                'reason' => 'No debería funcionar',
+            ])
+            ->assertSessionHasErrors('invoice');
+    }
+
+    #[Test]
+    public function already_cancelled_invoice_cannot_be_cancelled_again(): void
+    {
+        $admin   = User::factory()->create(['role' => UserRole::Admin->value, 'active' => true]);
+        $invoice = FelInvoice::factory()->cancelled()->create(['check_id' => $this->check->id]);
+
+        $this->actingAs($admin)
+            ->post("/admin/fel-invoices/{$invoice->id}/cancel", [
+                'reason' => 'Segundo intento',
+            ])
+            ->assertSessionHasErrors('invoice');
+    }
 }

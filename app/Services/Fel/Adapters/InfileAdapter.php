@@ -66,6 +66,33 @@ class InfileAdapter implements FelAdapterInterface
         return $this->parseAuthorizedXml($xmlAuthorized);
     }
 
+    public function cancel(string $uuid, string $nit, string $reason): FelResult
+    {
+        $response = Http::timeout(30)
+            ->withHeaders(['Content-Type' => 'application/json'])
+            ->post("{$this->apiUrl}/api/1/anular_dte", [
+                'llave_firma'   => $this->signatureKey,
+                'usuario'       => $this->user,
+                'llave_usuario' => $this->apiKey,
+                'nit_emisor'    => $nit,
+                'uuid'          => $uuid,
+                'motivo'        => $reason,
+            ]);
+
+        if ($response->failed()) {
+            return FelResult::failure("HTTP {$response->status()}: {$response->body()}");
+        }
+
+        $body = $response->json();
+
+        if (empty($body['resultado'])) {
+            $desc = $body['descripcion'] ?? 'Error desconocido de Infile';
+            return FelResult::failure($desc);
+        }
+
+        return FelResult::success(uuid: $uuid, serie: '', numero: '', xmlAuthorized: '');
+    }
+
     private function parseAuthorizedXml(string $xmlAuthorized): FelResult
     {
         try {

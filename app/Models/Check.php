@@ -3,7 +3,9 @@
 namespace App\Models;
 
 use App\Enums\CheckItemStatus;
+use App\Enums\CheckSource;
 use App\Enums\CheckStatus;
+use App\Enums\CheckType;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -15,13 +17,16 @@ class Check extends Model
     use HasFactory, HasUlids;
 
     protected $fillable = [
-        'number', 'table_id', 'waiter_user_id', 'status', 'covers',
+        'number', 'table_id', 'waiter_user_id', 'status', 'order_type', 'source', 'covers',
         'notes', 'subtotal', 'tax', 'tip', 'total',
-        'opened_at', 'closed_at',
+        'opened_at', 'closed_at', 'transferred_from',
+        'customer_name', 'customer_phone', 'customer_address',
     ];
 
     protected $casts = [
-        'status' => CheckStatus::class,
+        'status'     => CheckStatus::class,
+        'order_type' => CheckType::class,
+        'source'     => CheckSource::class,
         'covers' => 'integer',
         'subtotal' => 'decimal:2',
         'tax' => 'decimal:2',
@@ -56,6 +61,11 @@ class Check extends Model
         return $this->hasMany(PaymentSplit::class);
     }
 
+    public function rating(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(CheckRating::class);
+    }
+
     public function scopeOpen($query)
     {
         return $query->where('status', CheckStatus::Open);
@@ -75,7 +85,7 @@ class Check extends Model
 
     /**
      * Recompute subtotal / tax / total from non-cancelled items.
-     * Excludes IVA from item prices (snapshots are net) and adds it once at the end.
+     * Prices are IVA-inclusive (Guatemala). IVA is extracted for accounting display.
      */
     public function recalculate(): void
     {
@@ -84,12 +94,13 @@ class Check extends Model
             ->with('modifiers')
             ->get();
 
-        $subtotal = $items->sum(
+        $totalPrices = $items->sum(
             fn ($i) => ($i->price_snapshot + $i->modifiers->sum('price_snapshot')) * $i->quantity
         );
         $taxRate = (float) config('restaurant.iva_rate');
-        $tax = round($subtotal * $taxRate, 2);
-        $total = $subtotal + $tax + (float) $this->tip;
+        $subtotal = round($totalPrices / (1 + $taxRate), 2);
+        $tax = round($totalPrices - $subtotal, 2);
+        $total = $totalPrices + (float) $this->tip;
 
         $this->forceFill([
             'subtotal' => $subtotal,

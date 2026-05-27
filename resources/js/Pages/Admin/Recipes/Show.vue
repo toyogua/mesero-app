@@ -1,9 +1,10 @@
 <script setup>
 import { ref, computed } from 'vue';
-import { Head, useForm, Link } from '@inertiajs/vue3';
+import { Head, useForm, router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Button from '@/Components/UI/Button.vue';
 import Badge from '@/Components/UI/Badge.vue';
+import UnitConverter from '@/Components/UI/UnitConverter.vue';
 
 const props = defineProps({
     menuItem: { type: Object, required: true },
@@ -35,6 +36,43 @@ function stockFor(id) {
     return i ? `${i.quantity_on_hand} ${i.unit}` : '';
 }
 
+// ── Validaciones y hints de unidad ───────────────────────────────────────────
+const UNIT_NAMES = {
+    lb: 'Libra', oz: 'Onza', kg: 'Kilogramo', g: 'Gramo',
+    L: 'Litro', mL: 'Mililitro', unit: 'Unidad', portion: 'Porción',
+};
+
+const CONVERSION_HINTS = {
+    lb:   'Es lb — 1 lb = 16 oz. Para media libra escribí 0.5',
+    oz:   'Es oz — usá decimales para fracciones (ej: 2.5 oz)',
+    kg:   'Es kg — para 150 g escribí 0.15 · para 500 g escribí 0.5',
+    L:    'Es L — para 100 mL escribí 0.1 · para 500 mL escribí 0.5',
+    g:    'Es g — si superás 500 g, considerá usar lb o kg',
+    mL:   'Es mL — si superás 500 mL, considerá usar L',
+    unit: 'Es unidad entera — usá 1, 2, 3… Los decimales no están permitidos',
+};
+
+const WARN_THRESHOLDS = { lb: 20, oz: 64, kg: 10, L: 10, g: 3000, mL: 3000, unit: 50, portion: 20 };
+
+function hintFor(id) {
+    return CONVERSION_HINTS[unitFor(id)] ?? null;
+}
+
+function warningFor(id, qty) {
+    const unit  = unitFor(id);
+    const value = parseFloat(qty);
+    if (!unit || isNaN(value) || value <= 0) return null;
+
+    const max = WARN_THRESHOLDS[unit];
+    if (max && value > max) {
+        return `${value} ${unit} por porción parece muy alto. ¿Olvidaste convertir unidades?`;
+    }
+    if (unit === 'unit' && !Number.isInteger(value)) {
+        return 'La unidad "unit" debería ser un número entero (1, 2, 3…).';
+    }
+    return null;
+}
+
 const recipeForm = useForm({ lines: [] });
 const recipeSaved = ref(false);
 
@@ -46,24 +84,25 @@ function submitRecipe() {
 }
 
 // ── Modifiers ─────────────────────────────────────────────────────────────────
-const selectedGroups = ref(
-    props.modifier_groups.filter((g) => g.assigned).map((g) => g.id),
-);
+const selectedGroups  = ref(props.modifier_groups.filter((g) => g.assigned).map((g) => g.id));
+const modifierSaving  = ref(false);
+const modifierSaved   = ref(false);
 
-const modifierForm = useForm({ group_ids: [] });
-const modifierSaved = ref(false);
-
-function toggleGroup(id) {
-    const idx = selectedGroups.value.indexOf(id);
-    if (idx === -1) selectedGroups.value.push(id);
-    else selectedGroups.value.splice(idx, 1);
-}
 
 function submitModifiers() {
-    modifierForm.group_ids = selectedGroups.value;
-    modifierForm.put(`/admin/menu-items/${props.menuItem.id}/modifiers`, {
-        onSuccess: () => { modifierSaved.value = true; setTimeout(() => (modifierSaved.value = false), 2000); },
-    });
+    modifierSaving.value = true;
+    router.post(
+        `/admin/menu-items/${props.menuItem.id}/modifiers`,
+        { group_ids: [...selectedGroups.value] },
+        {
+            preserveState: false,
+            onSuccess: () => {
+                modifierSaved.value = true;
+                setTimeout(() => (modifierSaved.value = false), 2000);
+            },
+            onFinish: () => { modifierSaving.value = false; },
+        },
+    );
 }
 </script>
 
@@ -116,12 +155,38 @@ function submitModifiers() {
                                 </option>
                             </select>
                         </div>
-                        <div class="w-36">
+                        <div class="w-52">
                             <label class="field-label">
                                 Cantidad
-                                <span v-if="line.ingredient_id" class="text-[var(--color-fg-dim)]">({{ unitFor(line.ingredient_id) }})</span>
+                                <span v-if="line.ingredient_id" class="font-semibold text-[var(--color-primary)]">
+                                    ({{ unitFor(line.ingredient_id) }} — {{ UNIT_NAMES[unitFor(line.ingredient_id)] }})
+                                </span>
                             </label>
-                            <input v-model="line.quantity_used" type="number" step="0.0001" min="0.0001" class="field-input" placeholder="0.00" />
+                            <input
+                                v-model="line.quantity_used"
+                                type="number"
+                                step="0.0001"
+                                min="0.0001"
+                                placeholder="0.00"
+                                class="field-input"
+                                :class="warningFor(line.ingredient_id, line.quantity_used)
+                                    ? 'border-amber-400 focus:ring-amber-400/40'
+                                    : ''"
+                            />
+                            <p v-if="warningFor(line.ingredient_id, line.quantity_used)"
+                               class="mt-1 flex items-start gap-1 text-[11px] text-amber-500 leading-tight">
+                                <span class="shrink-0">⚠</span>
+                                {{ warningFor(line.ingredient_id, line.quantity_used) }}
+                            </p>
+                            <p v-else-if="hintFor(line.ingredient_id)"
+                               class="mt-1 text-[11px] text-[var(--color-fg-dim)] leading-tight">
+                                {{ hintFor(line.ingredient_id) }}
+                            </p>
+                            <UnitConverter
+                                v-if="line.ingredient_id"
+                                :target-unit="unitFor(line.ingredient_id)"
+                                v-model="line.quantity_used"
+                            />
                         </div>
                         <button type="button" class="h-10 w-10 flex items-center justify-center rounded-lg text-[var(--color-fg-muted)] hover:text-[var(--color-err)] hover:bg-[var(--color-err)]/10 transition mb-0.5" @click="removeLine(i)">✕</button>
                     </div>
@@ -159,27 +224,28 @@ function submitModifiers() {
                         :class="selectedGroups.includes(g.id)
                             ? 'border-[var(--color-primary)] bg-[color-mix(in_oklch,var(--color-primary)_8%,var(--color-surface))]'
                             : 'border-[var(--color-border-faint)] bg-[var(--color-surface)] hover:border-[var(--color-border)]'"
-                        @click="toggleGroup(g.id)"
                     >
                         <input
                             type="checkbox"
-                            :checked="selectedGroups.includes(g.id)"
-                            class="pointer-events-none"
-                            @click.prevent
+                            :value="g.id"
+                            v-model="selectedGroups"
                         />
                         <span class="flex-1 text-sm font-medium">{{ g.name }}</span>
-                        <Badge :tone="g.required ? 'warn' : 'neutral'" size="sm">
-                            {{ g.required ? 'Requerido' : 'Opcional' }}
+                        <Badge :tone="g.min_selections > 0 ? 'warn' : 'neutral'" size="sm">
+                            {{ g.min_selections > 0 ? 'Requerido' : 'Opcional' }}
                         </Badge>
                         <Badge tone="neutral" size="sm">
-                            {{ g.selection_type === 'single' ? 'Una opción' : 'Múltiple' }}
+                            <template v-if="g.max_selections === 1">Una opción</template>
+                            <template v-else-if="g.min_selections === g.max_selections">Exactamente {{ g.min_selections }}</template>
+                            <template v-else-if="g.max_selections === null">Mín. {{ g.min_selections }}</template>
+                            <template v-else>{{ g.min_selections }}–{{ g.max_selections }} opciones</template>
                         </Badge>
                     </label>
                 </div>
 
                 <div class="flex items-center justify-end gap-3">
                     <span v-if="modifierSaved" class="text-sm text-[var(--color-ok)] font-medium">✓ Guardado</span>
-                    <Button :loading="modifierForm.processing" @click="submitModifiers">Guardar modificadores</Button>
+                    <Button :loading="modifierSaving" @click="submitModifiers">Guardar modificadores</Button>
                 </div>
             </div>
         </div>
@@ -187,6 +253,7 @@ function submitModifiers() {
 </template>
 
 <style scoped>
+@reference "../../../../css/app.css";
 .field-label { @apply block text-xs font-medium text-[var(--color-fg-muted)] mb-1; }
 .field-input {
     @apply w-full h-10 px-3 rounded-lg text-sm

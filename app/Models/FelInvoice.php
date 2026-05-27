@@ -25,12 +25,15 @@ class FelInvoice extends Model
         'xml_authorized',
         'error_message',
         'retries',
+        'cancel_reason',
+        'cancelled_at',
     ];
 
     protected $casts = [
-        'status' => FelStatus::class,
-        'issued_at' => 'datetime',
-        'retries' => 'integer',
+        'status'       => FelStatus::class,
+        'issued_at'    => 'datetime',
+        'cancelled_at' => 'datetime',
+        'retries'      => 'integer',
     ];
 
     public function check(): BelongsTo
@@ -54,9 +57,18 @@ class FelInvoice extends Model
     public function markFailed(string $error): void
     {
         $this->forceFill([
-            'status' => FelStatus::Failed,
+            'status'        => FelStatus::Failed,
             'error_message' => $error,
-            'retries' => $this->retries + 1,
+            'retries'       => $this->retries + 1,
+        ])->save();
+    }
+
+    public function markCancelled(string $reason): void
+    {
+        $this->forceFill([
+            'status'        => FelStatus::Cancelled,
+            'cancel_reason' => $reason,
+            'cancelled_at'  => now(),
         ])->save();
     }
 }

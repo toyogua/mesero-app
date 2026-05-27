@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'name'     => env('RESTAURANT_NAME', 'Restaurante'),
     'iva_rate' => 0.12,
     'currency' => 'GTQ',
     'currency_symbol' => 'Q',

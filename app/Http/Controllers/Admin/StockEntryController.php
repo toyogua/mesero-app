@@ -34,13 +34,14 @@ class StockEntryController extends Controller
             ->paginate(30)
             ->withQueryString()
             ->through(fn ($e) => [
-                'id'            => $e->id,
-                'ingredient'    => ['id' => $e->ingredient->id, 'name' => $e->ingredient->name, 'unit' => $e->ingredient->unit],
-                'user'          => $e->user?->name ?? 'Sistema',
-                'quantity'      => (float) $e->quantity,
-                'cost_price'    => $e->cost_price !== null ? (float) $e->cost_price : null,
-                'notes'         => $e->notes,
-                'created_at'    => $e->created_at->toIso8601String(),
+                'id'              => $e->id,
+                'ingredient'      => ['id' => $e->ingredient->id, 'name' => $e->ingredient->name, 'unit' => $e->ingredient->unit],
+                'user'            => $e->user?->name ?? 'Sistema',
+                'quantity'        => (float) $e->quantity,
+                'quantity_before' => $e->quantity_before !== null ? (float) $e->quantity_before : null,
+                'cost_price'      => $e->cost_price !== null ? (float) $e->cost_price : null,
+                'notes'           => $e->notes,
+                'created_at'      => $e->created_at->toIso8601String(),
             ]);
 
         $ingredients = Ingredient::orderBy('name')->get(['id', 'name', 'unit']);

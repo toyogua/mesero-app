@@ -23,7 +23,7 @@ class KitchenController extends Controller
                 CheckItemStatus::Ready->value,
             ])
             ->with([
-                'check:id,number,table_id,covers,opened_at',
+                'check:id,number,table_id,covers,opened_at,order_type,customer_name',
                 'check.table:id,name,area_id',
                 'check.table.area:id,name',
                 'kitchenStation:id,name,code',
@@ -43,8 +43,10 @@ class KitchenController extends Controller
                 'ready_at' => $i->ready_at?->toIso8601String(),
                 'check_id' => $i->check_id,
                 'check_number' => $i->check?->number,
-                'table_name' => $i->check?->table?->name,
-                'area_name' => $i->check?->table?->area?->name,
+                'order_type'    => $i->check?->order_type?->value ?? 'dine_in',
+                'customer_name' => $i->check?->customer_name,
+                'table_name'    => $i->check?->table?->name,
+                'area_name'     => $i->check?->table?->area?->name,
                 'covers' => $i->check?->covers,
                 'opened_at' => $i->check?->opened_at?->toIso8601String(),
                 'modifiers' => $i->modifiers->map(fn ($m) => [

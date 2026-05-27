@@ -190,6 +190,7 @@ function deactivate(user) {
 </template>
 
 <style scoped>
+@reference "../../../../css/app.css";
 .table-th { @apply text-left px-4 py-3 font-medium text-[var(--color-fg-muted)] uppercase tracking-wider text-xs; }
 .table-td { @apply px-4 py-3; }
 .form-label { @apply block text-xs text-[var(--color-fg-muted)] mb-1; }

@@ -13,14 +13,16 @@ class Ingredient extends Model
     use HasFactory, HasUlids, HasAuditLog;
 
     protected $fillable = [
-        'name', 'unit', 'quantity_on_hand', 'minimum_stock', 'cost_price', 'active',
+        'name', 'unit', 'purchase_unit', 'units_per_package',
+        'quantity_on_hand', 'minimum_stock', 'cost_price', 'active',
     ];
 
     protected $casts = [
-        'quantity_on_hand' => 'decimal:4',
-        'minimum_stock'    => 'decimal:4',
-        'cost_price'       => 'decimal:4',
-        'active'           => 'boolean',
+        'quantity_on_hand'  => 'decimal:4',
+        'minimum_stock'     => 'decimal:4',
+        'cost_price'        => 'decimal:4',
+        'units_per_package' => 'decimal:4',
+        'active'            => 'boolean',
     ];
 
     public function recipeItems(): HasMany

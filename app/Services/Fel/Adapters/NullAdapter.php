@@ -21,4 +21,9 @@ class NullAdapter implements FelAdapterInterface
             xmlAuthorized: $xml,
         );
     }
+
+    public function cancel(string $uuid, string $nit, string $reason): FelResult
+    {
+        return FelResult::success(uuid: $uuid, serie: '', numero: '', xmlAuthorized: '');
+    }
 }

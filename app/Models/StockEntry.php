@@ -11,12 +11,13 @@ class StockEntry extends Model
     use HasUlids;
 
     protected $fillable = [
-        'ingredient_id', 'user_id', 'quantity', 'cost_price', 'notes',
+        'ingredient_id', 'user_id', 'quantity', 'quantity_before', 'cost_price', 'notes',
     ];
 
     protected $casts = [
-        'quantity'   => 'decimal:4',
-        'cost_price' => 'decimal:4',
+        'quantity'        => 'decimal:4',
+        'quantity_before' => 'decimal:4',
+        'cost_price'      => 'decimal:4',
     ];
 
     public function ingredient(): BelongsTo

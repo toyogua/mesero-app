@@ -12,11 +12,12 @@ class ModifierGroup extends Model
 {
     use HasFactory, HasUlids;
 
-    protected $fillable = ['name', 'selection_type', 'required', 'display_order'];
+    protected $fillable = ['name', 'min_selections', 'max_selections', 'display_order'];
 
     protected $casts = [
-        'required' => 'boolean',
-        'display_order' => 'integer',
+        'min_selections' => 'integer',
+        'max_selections' => 'integer',
+        'display_order'  => 'integer',
     ];
 
     public function options(): HasMany

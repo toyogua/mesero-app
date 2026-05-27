@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Badge from '@/Components/UI/Badge.vue';
 import Button from '@/Components/UI/Button.vue';
@@ -22,6 +22,7 @@ const props = defineProps({
 
 const filter = ref('all');
 const opening = ref(null);
+const role = computed(() => usePage().props.auth?.user?.role);
 
 const summary = computed(() => {
     const tables = props.areas.flatMap((a) => a.tables);
@@ -32,7 +33,7 @@ const summary = computed(() => {
         total: tables.length,
         revenue: tables
             .filter((t) => t.check)
-            .reduce((s, t) => s + (t.check.subtotal || 0), 0),
+            .reduce((s, t) => s + (t.check.total || 0), 0),
     };
 });
 
@@ -159,31 +160,36 @@ function currency(v) {
                                     {{ t.check.covers }} pers
                                 </span>
                             </div>
-                            <div class="font-numeric text-sm">{{ currency(t.check.subtotal) }}</div>
+                            <div class="font-numeric text-sm">{{ currency(t.check.total) }}</div>
                             <div class="text-[10px] uppercase tracking-widest text-[var(--color-fg-dim)]">
                                 {{ t.check.number }}
                             </div>
+                            <Badge v-if="t.check.transferred_from" tone="warn" size="sm" class="mt-1">
+                                De {{ t.check.transferred_from }}
+                            </Badge>
                         </div>
                     </Link>
 
-                    <!-- Mesa libre → abrir comanda -->
-                    <button
-                        v-for="t in area.tables.filter((t) => !t.occupied)"
-                        :key="t.id"
-                        type="button"
-                        :disabled="opening === t.id"
-                        class="group relative text-left rounded-2xl p-4 lg:p-5 border tap-target transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] focus-ring border-[var(--color-border-faint)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-up)] disabled:opacity-50"
-                        @click="openTable(t)"
-                    >
-                        <div class="absolute top-3 right-3 w-2 h-2 rounded-full bg-[var(--color-fg-dim)]" />
-                        <div class="text-[10px] uppercase tracking-widest text-[var(--color-fg-dim)] mb-2">
-                            {{ t.capacity }}p
-                        </div>
-                        <div class="text-2xl font-semibold tracking-tight mb-3">{{ t.name }}</div>
-                        <div class="text-xs text-[var(--color-fg-muted)]">
-                            {{ opening === t.id ? 'Abriendo…' : 'Tocá para abrir' }}
-                        </div>
-                    </button>
+                    <!-- Mesa libre → abrir comanda (solo waiter/admin) -->
+                    <template v-if="role !== 'cashier'">
+                        <button
+                            v-for="t in area.tables.filter((t) => !t.occupied)"
+                            :key="t.id"
+                            type="button"
+                            :disabled="opening === t.id"
+                            class="group relative text-left rounded-2xl p-4 lg:p-5 border tap-target transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] focus-ring border-[var(--color-border-faint)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-up)] disabled:opacity-50"
+                            @click="openTable(t)"
+                        >
+                            <div class="absolute top-3 right-3 w-2 h-2 rounded-full bg-[var(--color-fg-dim)]" />
+                            <div class="text-[10px] uppercase tracking-widest text-[var(--color-fg-dim)] mb-2">
+                                {{ t.capacity }}p
+                            </div>
+                            <div class="text-2xl font-semibold tracking-tight mb-3">{{ t.name }}</div>
+                            <div class="text-xs text-[var(--color-fg-muted)]">
+                                {{ opening === t.id ? 'Abriendo…' : 'Tocá para abrir' }}
+                            </div>
+                        </button>
+                    </template>
                 </div>
 
                 <div

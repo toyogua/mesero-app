@@ -17,6 +17,7 @@ class CheckUpdated implements ShouldBroadcastNow
     public function __construct(
         public Check $check,
         public string $reason = 'updated',
+        public ?string $itemName = null,
     ) {
     }
 
@@ -24,15 +25,18 @@ class CheckUpdated implements ShouldBroadcastNow
     {
         return [
             new PrivateChannel('check.'.$this->check->id),
+            new Channel('display'),
         ];
     }
 
     public function broadcastWith(): array
     {
         return [
-            'check_id' => $this->check->id,
-            'reason' => $this->reason,
-            'at' => now()->toIso8601String(),
+            'check_id'     => $this->check->id,
+            'check_number' => $this->check->number,
+            'reason'       => $this->reason,
+            'item_name'    => $this->itemName,
+            'at'           => now()->toIso8601String(),
         ];
     }
 

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ModifierOption extends Model
 {
@@ -22,5 +23,10 @@ class ModifierOption extends Model
     public function group(): BelongsTo
     {
         return $this->belongsTo(ModifierGroup::class, 'modifier_group_id');
+    }
+
+    public function ingredientLines(): HasMany
+    {
+        return $this->hasMany(ModifierOptionIngredient::class);
     }
 }

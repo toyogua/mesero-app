@@ -65,6 +65,29 @@ class FelService
     }
 
     /**
+     * Cancel (annul) an issued invoice. Calls the certificador and marks it Cancelled.
+     * Only Issued invoices can be cancelled — this is irreversible.
+     */
+    public function cancel(FelInvoice $invoice, string $reason): void
+    {
+        if ($invoice->status !== FelStatus::Issued) {
+            throw new RuntimeException("Solo se pueden anular facturas emitidas.");
+        }
+
+        $result = $this->adapter->cancel(
+            $invoice->uuid,
+            (string) config('restaurant.fel.emisor_nit'),
+            $reason,
+        );
+
+        if ($result->ok) {
+            $invoice->markCancelled($reason);
+        } else {
+            throw new RuntimeException("FEL annulment failed: {$result->error}");
+        }
+    }
+
+    /**
      * Retry a failed invoice. Resets status to pending and re-issues.
      */
     public function retry(FelInvoice $invoice): void

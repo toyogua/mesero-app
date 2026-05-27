@@ -103,6 +103,7 @@ function deactivate(table) {
 </template>
 
 <style scoped>
+@reference "../../../../css/app.css";
 .form-label { @apply block text-xs text-[var(--color-fg-muted)] mb-1; }
 .form-input { @apply w-full rounded-lg border border-[var(--color-border-faint)] bg-[var(--color-bg)] px-3 py-2 text-sm; }
 </style>

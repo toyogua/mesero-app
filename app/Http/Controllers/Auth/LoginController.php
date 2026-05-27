@@ -22,7 +22,7 @@ class LoginController extends Controller
     {
         $waiters = User::query()
             ->where('active', true)
-            ->whereIn('role', [UserRole::Waiter->value, UserRole::Admin->value, UserRole::Cashier->value])
+            ->whereIn('role', [UserRole::Waiter->value, UserRole::Admin->value, UserRole::Cashier->value, UserRole::Kitchen->value])
             ->orderBy('name')
             ->get(['id', 'name', 'role'])
             ->map(fn ($u) => [

@@ -37,7 +37,21 @@
 </head>
 <body>
 <div class="wrap">
-    <h1>{{ config('app.name', 'mesero-app') }}</h1>
+    @if ($business->logo_url)
+    <div style="text-align:center; margin-bottom:8px;">
+        <img src="{{ $business->logo_url }}" alt="Logo" style="max-height:64px; max-width:200px; object-fit:contain;">
+    </div>
+    @endif
+
+    <h1>{{ $business->business_name ?: config('app.name', 'mesero-app') }}</h1>
+
+    @if ($business->address || $business->phone)
+    <div class="sub" style="margin-bottom:4px;">
+        @if ($business->address){{ $business->address }}<br>@endif
+        @if ($business->phone)Tel: {{ $business->phone }}<br>@endif
+    </div>
+    @endif
+
     <div class="sub">
         Ticket {{ $check->number }}<br>
         {{ $check->table?->area?->name }} · {{ $check->table?->name ?? 'Mesa libre' }}<br>
@@ -94,14 +108,6 @@
     <hr class="divider">
 
     <table class="totals">
-        <tr>
-            <td class="label">Subtotal</td>
-            <td class="r">Q {{ number_format($check->subtotal, 2) }}</td>
-        </tr>
-        <tr>
-            <td class="label">IVA ({{ number_format($ivaRate * 100, 0) }}%)</td>
-            <td class="r">Q {{ number_format($check->tax, 2) }}</td>
-        </tr>
         @if ($check->tip > 0)
         <tr>
             <td class="label">Propina</td>
@@ -124,7 +130,14 @@
     </div>
     @endif
 
-    <div class="footer">¡Gracias por su visita!</div>
+    <hr class="divider">
+    <div style="text-align:center; margin: 10px 0 4px;">
+        {!! $ratingQr !!}
+    </div>
+    <div class="footer" style="margin-top:4px;">
+        Escaneá para calificar tu experiencia<br>
+        ¡Gracias por su visita!
+    </div>
 </div>
 <script>window.onload = () => window.print();</script>
 </body>

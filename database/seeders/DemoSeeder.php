@@ -56,6 +56,15 @@ class DemoSeeder extends Seeder
             'active' => true,
         ]);
 
+        User::create([
+            'name' => 'Caja',
+            'email' => 'caja@mesero.app',
+            'password' => Hash::make('secret123'),
+            'pin' => Hash::make('6666'),
+            'role' => UserRole::Cashier->value,
+            'active' => true,
+        ]);
+
         // ── Estaciones de cocina ──────────────────
         $stations = collect([
             ['name' => 'Cocina caliente', 'code' => 'hot_kitchen', 'display_order' => 1],

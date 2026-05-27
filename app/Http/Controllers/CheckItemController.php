@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\CheckItemStatus;
 use App\Events\CheckUpdated;
 use App\Events\KitchenQueueChanged;
+use App\Events\StockAlert;
 use App\Models\Check;
 use App\Models\CheckItem;
 use App\Models\CheckItemModifier;
@@ -65,7 +66,7 @@ class CheckItemController extends Controller
             $check->recalculate();
         });
 
-        CheckUpdated::dispatch($check, 'item_added');
+        broadcast(new CheckUpdated($check, 'item_added'))->toOthers();
 
         return back()->with('success', count($validated['items']).' item(s) agregados');
     }
@@ -91,7 +92,7 @@ class CheckItemController extends Controller
         $item->update(array_filter($validated, fn ($v) => $v !== null));
         $item->check->recalculate();
 
-        CheckUpdated::dispatch($item->check, 'item_updated');
+        broadcast(new CheckUpdated($item->check, 'item_updated'))->toOthers();
 
         return back();
     }
@@ -107,7 +108,7 @@ class CheckItemController extends Controller
             $check = $item->check;
             $item->delete();
             $check->recalculate();
-            CheckUpdated::dispatch($check, 'item_removed');
+            broadcast(new CheckUpdated($check, 'item_removed'))->toOthers();
 
             return back()->with('success', 'Item eliminado');
         }
@@ -118,9 +119,9 @@ class CheckItemController extends Controller
             $item->check->recalculate();
 
             if ($stationCode) {
-                KitchenQueueChanged::dispatch([$stationCode], 'item_cancelled');
+                broadcast(new KitchenQueueChanged([$stationCode], 'item_cancelled'))->toOthers();
             }
-            CheckUpdated::dispatch($item->check, 'item_cancelled');
+            broadcast(new CheckUpdated($item->check, 'item_cancelled'))->toOthers();
 
             return back()->with('success', 'Item cancelado');
         }
@@ -154,6 +155,71 @@ class CheckItemController extends Controller
         return $this->transition($item, CheckItemStatus::Served, 'servido', $inventory);
     }
 
+    /**
+     * Bulk: transicionar todos los ítems elegibles de una comanda de una sola vez.
+     * action: take (ordered→preparing) | ready (preparing→ready) | served (ready→served)
+     * item_ids?: opcional, limita a un subconjunto de ítems (ej. por estación)
+     */
+    public function bulkTransition(Request $request, Check $check, InventoryService $inventory): RedirectResponse
+    {
+        $data = $request->validate([
+            'action'   => 'required|in:take,ready,served',
+            'item_ids' => 'nullable|array',
+            'item_ids.*' => 'string',
+        ]);
+
+        $map = [
+            'take'   => [CheckItemStatus::Ordered,   CheckItemStatus::Preparing, 'tomados'],
+            'ready'  => [CheckItemStatus::Preparing, CheckItemStatus::Ready,     'listos'],
+            'served' => [CheckItemStatus::Ready,      CheckItemStatus::Served,    'servidos'],
+        ];
+
+        [$from, $to, $verb] = $map[$data['action']];
+
+        $query = $check->items()->where('status', $from->value);
+        if (!empty($data['item_ids'])) {
+            $query->whereIn('id', $data['item_ids']);
+        }
+        $items = $query->get();
+
+        if ($items->isEmpty()) {
+            return back()->with('success', 'No hay ítems para actualizar.');
+        }
+
+        $stationCodes = collect();
+        $allLowStock  = [];
+        DB::transaction(function () use ($items, $to, $inventory, $stationCodes, &$allLowStock) {
+            foreach ($items as $item) {
+                try {
+                    $item->transitionTo($to);
+                } catch (\RuntimeException) {
+                    continue;
+                }
+                if ($to === CheckItemStatus::Served) {
+                    $lowStock = $inventory->deductForItem($item);
+                    foreach ($lowStock as $entry) {
+                        $allLowStock[$entry['name']] = $entry;
+                    }
+                }
+                if ($item->kitchenStation?->code) {
+                    $stationCodes->push($item->kitchenStation->code);
+                }
+            }
+        });
+
+        if (!empty($allLowStock)) {
+            broadcast(new StockAlert(array_values($allLowStock)));
+        }
+
+        $unique = $stationCodes->unique()->values()->all();
+        if ($unique) {
+            broadcast(new KitchenQueueChanged($unique, $to->value))->toOthers();
+        }
+        broadcast(new CheckUpdated($check, "item_{$to->value}", (string) $items->count()))->toOthers();
+
+        return back()->with('success', "Todos los ítems marcados como {$verb}.");
+    }
+
     private function transition(
         CheckItem $item,
         CheckItemStatus $target,
@@ -167,32 +233,33 @@ class CheckItemController extends Controller
         }
 
         if ($target === CheckItemStatus::Served && $inventory) {
-            $inventory->deductForItem($item);
+            $lowStock = $inventory->deductForItem($item);
+            if (!empty($lowStock)) {
+                broadcast(new StockAlert($lowStock));
+            }
         }
 
         $item->refresh();
         $stationCode = $item->kitchenStation?->code;
 
         if ($stationCode) {
-            KitchenQueueChanged::dispatch([$stationCode], $target->value);
+            broadcast(new KitchenQueueChanged([$stationCode], $target->value))->toOthers();
         }
-        CheckUpdated::dispatch($item->check, "item_{$target->value}");
+        broadcast(new CheckUpdated($item->check, "item_{$target->value}", $item->name_snapshot))->toOthers();
 
         return back()->with('success', "Item marcado como {$verb}");
     }
 
     private function assertModifiersValid(MenuItem $menuItem, array $selectedIds): void
     {
-        // Collect all valid option IDs for this menu item grouped by their group
         $groupedOptions = [];
         foreach ($menuItem->modifierGroups as $group) {
             $groupedOptions[$group->id] = [
-                'group' => $group,
+                'group'     => $group,
                 'valid_ids' => $group->options->where('active', true)->pluck('id')->all(),
             ];
         }
 
-        // Validate each selected option belongs to a group on this menu item
         $allValidIds = collect($groupedOptions)->flatMap(fn ($g) => $g['valid_ids'])->all();
         foreach ($selectedIds as $id) {
             if (! in_array($id, $allValidIds, true)) {
@@ -202,30 +269,21 @@ class CheckItemController extends Controller
             }
         }
 
-        // Validate required groups have at least one selection
-        foreach ($groupedOptions as $groupId => $data) {
+        foreach ($groupedOptions as $data) {
             $group = $data['group'];
-            if (! $group->required) {
-                continue;
-            }
-            $hasSelection = count(array_intersect($selectedIds, $data['valid_ids'])) > 0;
-            if (! $hasSelection) {
+            $count = count(array_intersect($selectedIds, $data['valid_ids']));
+            $min   = $group->min_selections;
+            $max   = $group->max_selections;
+
+            if ($count < $min) {
                 throw ValidationException::withMessages([
-                    'items' => "El grupo \"{$group->name}\" es requerido.",
+                    'items' => "El grupo \"{$group->name}\" requiere al menos {$min} opción(es).",
                 ]);
             }
-        }
 
-        // Validate single-select groups have at most one selection
-        foreach ($groupedOptions as $groupId => $data) {
-            $group = $data['group'];
-            if ($group->selection_type !== 'single') {
-                continue;
-            }
-            $count = count(array_intersect($selectedIds, $data['valid_ids']));
-            if ($count > 1) {
+            if ($max !== null && $count > $max) {
                 throw ValidationException::withMessages([
-                    'items' => "El grupo \"{$group->name}\" solo permite una opción.",
+                    'items' => "El grupo \"{$group->name}\" permite máximo {$max} opción(es).",
                 ]);
             }
         }

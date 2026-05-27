@@ -7,6 +7,7 @@ use App\Models\KitchenStation;
 use App\Models\MenuItem;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -62,6 +63,7 @@ class MenuItemController extends Controller
         ]);
 
         MenuItem::create($data);
+        Cache::forget('menu_for_check');
 
         return back()->with('success', 'Ítem creado.');
     }
@@ -79,6 +81,7 @@ class MenuItemController extends Controller
         ]);
 
         $menuItem->update($data);
+        Cache::forget('menu_for_check');
 
         return back()->with('success', 'Ítem actualizado.');
     }
@@ -86,6 +89,7 @@ class MenuItemController extends Controller
     public function destroy(MenuItem $menuItem): RedirectResponse
     {
         $menuItem->update(['active' => false]);
+        Cache::forget('menu_for_check');
 
         return back()->with('success', 'Ítem desactivado.');
     }

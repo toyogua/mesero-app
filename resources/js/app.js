@@ -1,7 +1,14 @@
 import './bootstrap';
 
 import { createApp, h } from 'vue';
-import { createInertiaApp } from '@inertiajs/vue3';
+import { createInertiaApp, router } from '@inertiajs/vue3';
+
+router.on('before', (event) => {
+    const socketId = window.Echo?.socketId();
+    if (socketId) {
+        event.detail.visit.headers['X-Socket-ID'] = socketId;
+    }
+});
 
 createInertiaApp({
     resolve: (name) => {

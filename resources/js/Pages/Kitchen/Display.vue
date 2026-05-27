@@ -3,6 +3,9 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Badge from '@/Components/UI/Badge.vue';
+import { useToast } from '@/composables/useToast.js';
+
+const { add: toast } = useToast();
 
 const props = defineProps({
     stations: { type: Array, default: () => [] },
@@ -14,6 +17,8 @@ const now = ref(Date.now());
 
 // Refresh timestamps cada 15s para que los tiempos se actualicen
 let timer = null;
+let pollTimer = null;
+let toastDebounce = null;
 const subscriptions = [];
 
 function refreshQueue() {
@@ -22,11 +27,18 @@ function refreshQueue() {
 
 onMounted(() => {
     timer = setInterval(() => (now.value = Date.now()), 15000);
+    pollTimer = setInterval(refreshQueue, 30000);
 
     if (window.Echo) {
         for (const s of props.stations) {
             const ch = window.Echo.private(`kitchen.${s.code}`);
-            ch.listen('.KitchenQueueChanged', refreshQueue);
+            ch.listen('.KitchenQueueChanged', (payload) => {
+                if (payload.reason === 'new_items') {
+                    clearTimeout(toastDebounce);
+                    toastDebounce = setTimeout(() => toast('Nuevo pedido en cola', 'warn'), 300);
+                }
+                refreshQueue();
+            });
             subscriptions.push(`kitchen.${s.code}`);
         }
     }
@@ -34,9 +46,11 @@ onMounted(() => {
 
 onUnmounted(() => {
     clearInterval(timer);
+    clearInterval(pollTimer);
+    clearTimeout(toastDebounce);
     if (window.Echo) {
         for (const name of subscriptions) {
-            try { window.Echo.leave(`private-${name}`); } catch {}
+            try { window.Echo.leave(name); } catch {}
         }
     }
 });
@@ -59,13 +73,14 @@ const groupedByCheck = computed(() => {
     const map = new Map();
     for (const item of filteredItems.value) {
         if (!map.has(item.check_id)) {
+            const isTakeout = item.order_type === 'takeout';
             map.set(item.check_id, {
-                check_id: item.check_id,
+                check_id:     item.check_id,
                 check_number: item.check_number,
-                table_name: item.table_name,
-                area_name: item.area_name,
-                covers: item.covers,
-                opened_at: item.opened_at,
+                table_name:   isTakeout ? item.customer_name : item.table_name,
+                area_name:    isTakeout ? 'Para llevar'       : item.area_name,
+                covers:       item.covers,
+                opened_at:    item.opened_at,
                 items: [],
             });
         }
@@ -95,14 +110,19 @@ function urgencyTone(iso) {
 }
 
 function take(item) {
-    router.post(`/check-items/${item.id}/take`, {}, {
-        preserveScroll: true,
-        preserveState: false,
-    });
+    router.post(`/check-items/${item.id}/take`, {}, { preserveScroll: true, preserveState: false });
 }
 
 function ready(item) {
-    router.post(`/check-items/${item.id}/ready`, {}, {
+    router.post(`/check-items/${item.id}/ready`, {}, { preserveScroll: true, preserveState: false });
+}
+
+function bulkAction(group, action) {
+    const ids = group.items
+        .filter((i) => (action === 'take' ? i.status === 'ordered' : i.status === 'preparing'))
+        .map((i) => i.id);
+    if (!ids.length) return;
+    router.post(`/checks/${group.check_id}/items/bulk-transition`, { action, item_ids: ids }, {
         preserveScroll: true,
         preserveState: false,
     });
@@ -188,6 +208,29 @@ const statusMeta = {
                         </div>
                     </div>
                 </header>
+
+                <!-- Bulk actions -->
+                <div
+                    v-if="g.items.some(i => i.status === 'ordered') || g.items.some(i => i.status === 'preparing')"
+                    class="px-4 py-2 flex gap-2 border-b border-[var(--color-border-faint)] bg-[var(--color-surface-down)]"
+                >
+                    <button
+                        v-if="g.items.some(i => i.status === 'ordered')"
+                        type="button"
+                        class="flex-1 h-8 rounded-lg text-[11px] uppercase tracking-widest font-semibold bg-[var(--color-warn)] text-[oklch(15%_0.02_60)] hover:opacity-90 active:scale-95 transition"
+                        @click="bulkAction(g, 'take')"
+                    >
+                        Tomar todo
+                    </button>
+                    <button
+                        v-if="g.items.some(i => i.status === 'preparing')"
+                        type="button"
+                        class="flex-1 h-8 rounded-lg text-[11px] uppercase tracking-widest font-semibold bg-[var(--color-ok)] text-[oklch(15%_0.02_60)] hover:opacity-90 active:scale-95 transition"
+                        @click="bulkAction(g, 'ready')"
+                    >
+                        Todo listo
+                    </button>
+                </div>
 
                 <!-- Items -->
                 <ul class="flex-1 divide-y divide-[var(--color-border-faint)]">

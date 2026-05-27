@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
@@ -23,10 +24,12 @@ class KitchenQueueChanged implements ShouldBroadcastNow
 
     public function broadcastOn(): array
     {
-        return array_map(
+        $private = array_map(
             fn (string $code) => new PrivateChannel('kitchen.'.$code),
             array_values(array_unique($this->stationCodes)),
         );
+
+        return [...$private, new Channel('display')];
     }
 
     public function broadcastWith(): array

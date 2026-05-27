@@ -1,24 +1,65 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Button from '@/Components/UI/Button.vue';
 import Badge from '@/Components/UI/Badge.vue';
 import { useChannel } from '@/composables/useChannel.js';
+import { useToast } from '@/composables/useToast.js';
 
 const props = defineProps({
-    check: { type: Object, required: true },
-    menu: { type: Array, default: () => [] },
+    check:            { type: Object,   required: true },
+    menu:             { type: Array,    default: () => [] },
+    stock_map:        { type: Object,   default: () => ({}) },
+    available_tables: { type: Array,    default: () => [] },
+    fel_enabled:      { type: Boolean,  default: false },
 });
 
-useChannel(`check.${props.check.id}`, '.CheckUpdated', () => {
+const { add: toast } = useToast();
+
+const toastTones = {
+    item_ready:     { verb: 'listo para servir', tone: 'ok' },
+    item_preparing: { verb: 'en preparación',    tone: 'info' },
+    item_served:    { verb: 'servido',            tone: 'ok' },
+};
+
+useChannel(`check.${props.check.id}`, '.CheckUpdated', (payload) => {
+    const t = toastTones[payload.reason];
+    if (t) {
+        const n = Number(payload.item_name);
+        const detail = n > 0 ? `${n} ítems` : payload.item_name || null;
+        const suffix = detail ? `${detail} — ${t.verb}` : t.verb;
+        toast(`[${payload.check_number}] ${suffix}`, t.tone);
+    }
     router.reload({ only: ['check'], preserveScroll: true });
 });
 
 const activeCategory = ref(props.menu[0]?.category || null);
 const tab = ref('items'); // móvil: 'items' | 'menu'
+const page    = usePage();
+const isAdmin    = computed(() => page.props.auth?.user?.role === 'admin');
+const isCashier  = computed(() => page.props.auth?.user?.role === 'cashier');
+const canEdit    = computed(() => !isCashier.value);
+
 const sending = ref(false);
 const closing = ref(false);
+
+// ── Inline quantity editing ───────────────────────────────────────────────────
+const qtyEdits = ref({});
+
+function onQtyInput(item, val) {
+    qtyEdits.value[item.id] = val;
+}
+
+function commitQty(item) {
+    const raw = qtyEdits.value[item.id];
+    delete qtyEdits.value[item.id];
+    if (raw === undefined) return;
+    const n = parseInt(raw, 10);
+    if (isNaN(n) || n === item.quantity) return;
+    if (n < 1) { removeItem(item); return; }
+    router.patch(`/check-items/${item.id}`, { quantity: Math.min(n, 50) }, { preserveScroll: true, preserveState: false });
+}
 
 // ── Modifier picker ──────────────────────────────────────────────────────────
 const pending = ref(null); // { menuItem, selections: { groupId: [optionId] } }
@@ -38,12 +79,17 @@ function openPicker(menuItem) {
 function toggleOption(group, optionId) {
     if (!pending.value) return;
     const sel = pending.value.selections[group.id];
-    if (group.selection_type === 'single') {
-        pending.value.selections[group.id] = sel[0] === optionId ? [] : [optionId];
+    const idx = sel.indexOf(optionId);
+    const max = group.max_selections;
+
+    if (idx !== -1) {
+        sel.splice(idx, 1);
     } else {
-        const idx = sel.indexOf(optionId);
-        if (idx === -1) sel.push(optionId);
-        else sel.splice(idx, 1);
+        if (max === 1) {
+            pending.value.selections[group.id] = [optionId];
+        } else if (max === null || sel.length < max) {
+            sel.push(optionId);
+        }
     }
 }
 
@@ -51,10 +97,22 @@ function isSelected(groupId, optionId) {
     return pending.value?.selections[groupId]?.includes(optionId) ?? false;
 }
 
+function groupSelectionHint(group) {
+    const min = group.min_selections;
+    const max = group.max_selections;
+    if (max === 1) return 'Elegí uno';
+    if (max === null && min === 0) return 'Elegí los que quieras';
+    if (max === null) return `Mínimo ${min}`;
+    if (min === max) return `Elegí exactamente ${min}`;
+    return `Entre ${min} y ${max}`;
+}
+
 function canConfirm() {
     if (!pending.value) return false;
     for (const g of pending.value.menuItem.modifier_groups) {
-        if (g.required && pending.value.selections[g.id].length === 0) return false;
+        const count = pending.value.selections[g.id].length;
+        if (count < g.min_selections) return false;
+        if (g.max_selections !== null && count > g.max_selections) return false;
     }
     return true;
 }
@@ -76,6 +134,10 @@ const categoryLabels = {
 
 const draftCount = computed(() =>
     props.check.items.filter((i) => i.status === 'draft').length
+);
+
+const readyCount = computed(() =>
+    props.check.items.filter((i) => i.status === 'ready').length
 );
 
 const itemsByStatus = computed(() => {
@@ -117,7 +179,11 @@ function addItem(menuItem, modifiers = []) {
 }
 
 function changeQty(item, delta) {
-    const next = item.quantity + delta;
+    const base = qtyEdits.value[item.id] !== undefined
+        ? (parseInt(qtyEdits.value[item.id], 10) || item.quantity)
+        : item.quantity;
+    delete qtyEdits.value[item.id];
+    const next = base + delta;
     if (next < 1) { removeItem(item); return; }
     router.patch(`/check-items/${item.id}`, { quantity: next }, { preserveScroll: true, preserveState: false });
 }
@@ -137,10 +203,53 @@ function send() {
     });
 }
 
+const servingAll = ref(false);
+function serveAll() {
+    servingAll.value = true;
+    router.post(`/checks/${props.check.id}/items/bulk-transition`, { action: 'served' }, {
+        preserveScroll: true, preserveState: false, onFinish: () => (servingAll.value = false),
+    });
+}
+
+// ── NIT close form ───────────────────────────────────────────────────────────
+const showCloseForm   = ref(false);
+const receptorNit     = ref('');
+const receptorName    = ref('');
+
 function close() {
-    if (!confirm('¿Cerrar la cuenta? Esta acción no se puede deshacer.')) return;
+    if (props.fel_enabled) {
+        showCloseForm.value = true;
+    } else {
+        if (!confirm('¿Cerrar la cuenta? Esta acción no se puede deshacer.')) return;
+        submitClose();
+    }
+}
+
+function submitClose() {
     closing.value = true;
-    router.post(`/checks/${props.check.id}/close`, {}, { onFinish: () => (closing.value = false) });
+    showCloseForm.value = false;
+    const payload = props.fel_enabled
+        ? { receptor_nit: receptorNit.value || 'CF', receptor_name: receptorName.value || 'CONSUMIDOR FINAL' }
+        : {};
+    router.post(`/checks/${props.check.id}/close`, payload, {
+        onFinish: () => { closing.value = false; },
+    });
+}
+
+function voidCheck() {
+    if (!confirm(`¿Anular comanda ${props.check.number}? Esta acción cancelará todos los ítems y no se puede deshacer.`)) return;
+    router.post(`/checks/${props.check.id}/void`);
+}
+
+const transferTarget = ref('');
+const showTransfer   = ref(false);
+
+function submitTransfer() {
+    if (!transferTarget.value) return;
+    router.patch(`/checks/${props.check.id}/transfer`, { table_id: transferTarget.value }, {
+        preserveScroll: true,
+        onSuccess: () => { showTransfer.value = false; transferTarget.value = ''; },
+    });
 }
 
 function printTicket() {
@@ -168,7 +277,7 @@ function saveNotes() {
 const tipInput = ref('');
 
 function applyTipPct(pct) {
-    const amount = ((props.check.subtotal * pct) / 100).toFixed(2);
+    const amount = (((props.check.total - props.check.tip) * pct) / 100).toFixed(2);
     tipInput.value = amount;
     submitTip(amount);
 }
@@ -210,40 +319,155 @@ function resetSplits() {
                     class="text-xs uppercase tracking-widest text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] transition"
                     @click="printTicket"
                 >🖨 Imprimir</button>
-                <Link href="/floor" class="text-xs uppercase tracking-widest text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] transition">
-                    ← Salón
+                <Link
+                    :href="check.order_type === 'takeout' ? '/takeout' : '/floor'"
+                    class="text-xs uppercase tracking-widest text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] transition"
+                >
+                    {{ check.order_type === 'takeout' ? '← Para llevar' : '← Salón' }}
                 </Link>
             </div>
         </template>
+
+        <!-- Aviso orden web -->
+        <div
+            v-if="check.source === 'web'"
+            class="flex items-start gap-3 mb-5 px-4 py-3 rounded-xl border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/8"
+        >
+            <span class="text-lg shrink-0">📱</span>
+            <div class="min-w-0">
+                <div class="text-sm font-semibold flex items-center gap-2">
+                    Orden web
+                    <span class="text-[10px] uppercase tracking-widest font-bold px-2 py-0.5 rounded-full bg-[var(--color-primary)]/20 text-[var(--color-primary)]">
+                        Online
+                    </span>
+                </div>
+                <div class="text-xs text-[var(--color-fg-muted)] mt-0.5">
+                    Llamar al cliente para confirmar antes de enviar a cocina.
+                </div>
+            </div>
+        </div>
 
         <!-- Cabecera -->
         <header class="flex flex-wrap items-end justify-between gap-4 mb-6">
             <div>
                 <div class="text-xs uppercase tracking-widest text-[var(--color-fg-dim)] mb-1">
-                    {{ check.table?.area_name || 'Sin área' }} · {{ check.number }}
+                    <template v-if="check.order_type === 'takeout'">
+                        Para llevar · {{ check.number }}
+                    </template>
+                    <template v-else>
+                        {{ check.table?.area_name || 'Sin área' }} · {{ check.number }}
+                    </template>
                 </div>
-                <h1 class="text-3xl font-semibold tracking-tight flex items-center gap-3">
-                    {{ check.table?.name || 'Comanda libre' }}
+                <h1 class="text-3xl font-semibold tracking-tight flex items-center gap-3 flex-wrap">
+                    <template v-if="check.order_type === 'takeout'">
+                        {{ check.customer_name }}
+                    </template>
+                    <template v-else>
+                        {{ check.table?.name || 'Comanda libre' }}
+                    </template>
                     <Badge tone="primary" size="md">{{ check.status }}</Badge>
+                    <Badge v-if="check.transferred_from" tone="warn" size="md">
+                        Movida de {{ check.transferred_from }}
+                    </Badge>
                 </h1>
-                <div class="text-sm text-[var(--color-fg-muted)] mt-2">
-                    {{ check.covers }} comensales · Atiende {{ check.waiter.name }}
+                <div class="text-sm text-[var(--color-fg-muted)] mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                    <template v-if="check.order_type === 'takeout'">
+                        <span v-if="check.customer_phone">📞 {{ check.customer_phone }}</span>
+                        <span v-if="check.customer_address">📍 {{ check.customer_address }}</span>
+                    </template>
+                    <template v-else>
+                        <span>{{ check.covers }} comensales</span>
+                    </template>
+                    <span>Atiende {{ check.waiter.name }}</span>
                 </div>
             </div>
             <div class="flex items-center gap-2">
-                <Button v-if="draftCount > 0" variant="primary" size="lg" :loading="sending" @click="send">
+                <Button v-if="canEdit && draftCount > 0" variant="primary" size="lg" :loading="sending" @click="send">
                     Enviar a cocina ({{ draftCount }})
                 </Button>
-                <Button v-if="check.is_ready_to_close" variant="ghost" size="lg" :loading="closing" @click="close">
+                <Button v-if="canEdit && readyCount > 0" variant="ghost" size="lg" :loading="servingAll" @click="serveAll">
+                    Servir todos ({{ readyCount }})
+                </Button>
+                <Button v-if="check.is_ready_to_close && check.status === 'open'" variant="ghost" size="lg" :loading="closing" @click="close">
                     Cerrar cuenta
                 </Button>
+                <template v-if="isAdmin && check.status === 'open'">
+                    <Button
+                        v-if="!showTransfer"
+                        variant="ghost"
+                        size="lg"
+                        @click="showTransfer = true"
+                    >
+                        Cambiar mesa
+                    </Button>
+                    <div v-else class="flex items-center gap-2">
+                        <select
+                            v-model="transferTarget"
+                            class="h-10 px-3 rounded-lg border border-[var(--color-border-faint)] bg-[var(--color-surface)] text-sm"
+                        >
+                            <option value="">Seleccionar mesa</option>
+                            <option v-for="t in available_tables" :key="t.id" :value="t.id">{{ t.name }}</option>
+                        </select>
+                        <Button size="lg" :disabled="!transferTarget" @click="submitTransfer">Mover</Button>
+                        <Button variant="ghost" size="lg" @click="showTransfer = false; transferTarget = ''">×</Button>
+                    </div>
+                    <Button
+                        variant="ghost"
+                        size="lg"
+                        class="text-[var(--color-err)] hover:bg-[var(--color-err)]/10"
+                        @click="voidCheck"
+                    >
+                        Anular
+                    </Button>
+                </template>
             </div>
         </header>
+
+        <!-- NIT / Datos de facturación -->
+        <div
+            v-if="showCloseForm"
+            class="mb-4 rounded-2xl border border-[var(--color-primary)]/40 bg-[var(--color-primary)]/5 p-5"
+        >
+            <div class="text-sm font-semibold mb-3">Datos para factura electrónica (FEL)</div>
+            <div class="grid sm:grid-cols-2 gap-3 mb-4">
+                <div>
+                    <label class="block text-xs text-[var(--color-fg-muted)] mb-1">NIT del cliente</label>
+                    <input
+                        v-model="receptorNit"
+                        type="text"
+                        maxlength="20"
+                        placeholder="CF  (o ej. 1234567-8)"
+                        class="w-full h-9 px-3 rounded-lg border border-[var(--color-border-faint)] bg-[var(--color-surface)] text-sm font-mono uppercase"
+                        @keyup.enter="submitClose"
+                    />
+                </div>
+                <div>
+                    <label class="block text-xs text-[var(--color-fg-muted)] mb-1">Nombre del receptor</label>
+                    <input
+                        v-model="receptorName"
+                        type="text"
+                        maxlength="100"
+                        placeholder="CONSUMIDOR FINAL"
+                        class="w-full h-9 px-3 rounded-lg border border-[var(--color-border-faint)] bg-[var(--color-surface)] text-sm"
+                        @keyup.enter="submitClose"
+                    />
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <Button :loading="closing" @click="submitClose">
+                    Cerrar y emitir factura
+                </Button>
+                <Button variant="ghost" @click="showCloseForm = false">Cancelar</Button>
+            </div>
+            <p class="mt-2 text-xs text-[var(--color-fg-dim)]">
+                Dejá NIT vacío para emitir como Consumidor Final (CF).
+            </p>
+        </div>
 
         <!-- Tabs móvil -->
         <div class="lg:hidden flex gap-2 mb-4">
             <button
-                v-for="opt in [{ id: 'items', label: `Cuenta (${check.items.length})` }, { id: 'menu', label: 'Menú' }]"
+                v-for="opt in (canEdit ? [{ id: 'items', label: `Cuenta (${check.items.length})` }, { id: 'menu', label: 'Menú' }] : [{ id: 'items', label: `Cuenta (${check.items.length})` }])"
                 :key="opt.id"
                 type="button"
                 class="flex-1 h-11 rounded-lg text-sm font-medium transition tap-target focus-ring"
@@ -279,7 +503,16 @@ function resetSplits() {
                                     <!-- Qty controls (solo draft) -->
                                     <div v-if="item.status === 'draft'" class="flex items-center gap-1 bg-[var(--color-surface-up)] rounded-lg p-0.5 mt-0.5">
                                         <button type="button" class="w-7 h-7 rounded-md hover:bg-[var(--color-surface)] focus-ring text-sm" @click="changeQty(item, -1)">−</button>
-                                        <span class="font-numeric text-sm w-6 text-center">{{ item.quantity }}</span>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="50"
+                                            :value="qtyEdits[item.id] ?? item.quantity"
+                                            class="font-numeric text-sm w-8 text-center bg-transparent border-none outline-none rounded focus:bg-[var(--color-surface)] focus:w-10 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                            @input="onQtyInput(item, $event.target.value)"
+                                            @blur="commitQty(item)"
+                                            @keydown.enter="$event.target.blur()"
+                                        />
                                         <button type="button" class="w-7 h-7 rounded-md hover:bg-[var(--color-surface)] focus-ring text-sm" @click="changeQty(item, 1)">+</button>
                                     </div>
                                     <span v-else class="font-numeric text-sm text-[var(--color-fg-dim)] w-6 text-center mt-1">{{ item.quantity }}×</span>
@@ -317,12 +550,6 @@ function resetSplits() {
 
                     <!-- Totales -->
                     <div class="px-5 py-4 border-t border-[var(--color-border-faint)] space-y-1.5">
-                        <div class="flex justify-between text-sm text-[var(--color-fg-muted)]">
-                            <span>Subtotal</span><span class="font-numeric">{{ currency(check.subtotal) }}</span>
-                        </div>
-                        <div class="flex justify-between text-sm text-[var(--color-fg-muted)]">
-                            <span>IVA (12%)</span><span class="font-numeric">{{ currency(check.tax) }}</span>
-                        </div>
                         <div v-if="check.tip > 0" class="flex justify-between text-sm text-[var(--color-fg-muted)]">
                             <span>Propina</span><span class="font-numeric">{{ currency(check.tip) }}</span>
                         </div>
@@ -472,12 +699,28 @@ function resetSplits() {
                                 v-for="m in group.items" :key="m.id"
                                 type="button"
                                 class="text-left p-3 rounded-xl bg-[var(--color-surface-up)] hover:bg-[color-mix(in_oklch,var(--color-primary)_15%,var(--color-surface-up))] active:scale-[0.97] transition-all focus-ring tap-target relative"
+                                :class="{ 'opacity-50': stock_map[m.id] === 0 }"
                                 @click="openPicker(m)"
                             >
-                                <div class="text-sm font-medium leading-tight mb-2 line-clamp-2">{{ m.name }}</div>
+                                <div class="text-sm font-medium leading-tight mb-1.5 line-clamp-2">{{ m.name }}</div>
                                 <div class="flex items-center justify-between">
                                     <span class="font-numeric text-sm text-[var(--color-primary)]">{{ currency(m.price) }}</span>
                                     <span class="text-[10px] uppercase tracking-widest text-[var(--color-fg-dim)]">{{ m.kitchen_station_name }}</span>
+                                </div>
+                                <!-- Stock indicator -->
+                                <div v-if="stock_map[m.id] !== null && stock_map[m.id] !== undefined" class="mt-1.5">
+                                    <span
+                                        v-if="stock_map[m.id] === 0"
+                                        class="text-[10px] font-semibold text-[var(--color-err)]"
+                                    >sin stock</span>
+                                    <span
+                                        v-else-if="stock_map[m.id] <= 5"
+                                        class="text-[10px] font-medium text-[var(--color-warn)]"
+                                    >queda {{ stock_map[m.id] }}</span>
+                                    <span
+                                        v-else
+                                        class="text-[10px] text-[var(--color-fg-dim)]"
+                                    >{{ stock_map[m.id] }} disp.</span>
                                 </div>
                                 <!-- Indicator when item has modifier groups -->
                                 <span
@@ -512,11 +755,15 @@ function resetSplits() {
                         <div v-for="g in pending.menuItem.modifier_groups" :key="g.id">
                             <div class="flex items-center gap-2 mb-2">
                                 <span class="text-sm font-semibold">{{ g.name }}</span>
-                                <Badge :tone="g.required ? 'warn' : 'neutral'" size="sm">
-                                    {{ g.required ? 'Requerido' : 'Opcional' }}
+                                <Badge :tone="g.min_selections > 0 ? 'warn' : 'neutral'" size="sm">
+                                    {{ g.min_selections > 0 ? 'Requerido' : 'Opcional' }}
                                 </Badge>
                                 <span class="text-[10px] text-[var(--color-fg-dim)] ml-auto">
-                                    {{ g.selection_type === 'single' ? 'Elegí uno' : 'Elegí varios' }}
+                                    {{ groupSelectionHint(g) }}
+                                    <template v-if="g.max_selections !== 1">
+                                        · {{ pending.selections[g.id].length }}
+                                        <template v-if="g.max_selections !== null">/ {{ g.max_selections }}</template>
+                                    </template>
                                 </span>
                             </div>
                             <div class="grid grid-cols-2 gap-2">

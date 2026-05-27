@@ -81,7 +81,9 @@ function currency(v) {
                     <tr>
                         <th class="px-4 py-3 text-left">Fecha</th>
                         <th class="px-4 py-3 text-left">Ingrediente</th>
-                        <th class="px-4 py-3 text-right">Cantidad</th>
+                        <th class="px-4 py-3 text-right">Antes</th>
+                        <th class="px-4 py-3 text-right">Agregado</th>
+                        <th class="px-4 py-3 text-right">Después</th>
                         <th class="px-4 py-3 text-right">Costo unitario</th>
                         <th class="px-4 py-3 text-left">Nota</th>
                         <th class="px-4 py-3 text-left">Usuario</th>
@@ -89,7 +91,7 @@ function currency(v) {
                 </thead>
                 <tbody class="divide-y divide-[var(--color-border-faint)]">
                     <tr v-if="!entries.data.length">
-                        <td colspan="6" class="px-4 py-10 text-center text-[var(--color-fg-dim)]">
+                        <td colspan="8" class="px-4 py-10 text-center text-[var(--color-fg-dim)]">
                             Sin entradas en el período seleccionado.
                         </td>
                     </tr>
@@ -99,7 +101,13 @@ function currency(v) {
                             {{ e.ingredient.name }}
                             <span class="text-xs text-[var(--color-fg-dim)] ml-1">({{ e.ingredient.unit }})</span>
                         </td>
+                        <td class="px-4 py-3 text-right font-numeric text-[var(--color-fg-muted)]">
+                            {{ e.quantity_before !== null ? e.quantity_before : '—' }}
+                        </td>
                         <td class="px-4 py-3 text-right font-numeric text-green-600">+{{ e.quantity }}</td>
+                        <td class="px-4 py-3 text-right font-numeric font-semibold">
+                            {{ e.quantity_before !== null ? (e.quantity_before + e.quantity).toFixed(4) : '—' }}
+                        </td>
                         <td class="px-4 py-3 text-right font-numeric text-[var(--color-fg-muted)]">{{ currency(e.cost_price) }}</td>
                         <td class="px-4 py-3 text-[var(--color-fg-muted)] text-xs italic">{{ e.notes ?? '—' }}</td>
                         <td class="px-4 py-3 text-xs">{{ e.user }}</td>

@@ -37,4 +37,17 @@ class FelInvoiceFactory extends Factory
             'retries'       => 1,
         ]);
     }
+
+    public function cancelled(): static
+    {
+        return $this->state([
+            'status'        => FelStatus::Cancelled,
+            'uuid'          => $this->faker->uuid(),
+            'serie'         => 'A',
+            'numero'        => (string) $this->faker->numberBetween(1, 99999),
+            'issued_at'     => now()->subHour(),
+            'cancel_reason' => 'Error en datos del cliente',
+            'cancelled_at'  => now(),
+        ]);
+    }
 }

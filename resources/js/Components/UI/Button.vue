@@ -60,7 +60,7 @@ const classes = computed(() => [
 </script>
 
 <template>
-    <component :is="as" :type="as === 'button' ? type : undefined" :class="classes" :disabled="loading">
+    <component :is="as" v-bind="as !== 'button' ? { href: $attrs.href } : { type }" :class="classes" :disabled="loading">
         <slot />
     </component>
 </template>

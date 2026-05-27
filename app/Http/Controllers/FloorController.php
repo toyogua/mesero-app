@@ -13,7 +13,7 @@ class FloorController extends Controller
         $areas = Area::query()
             ->active()
             ->with(['tables' => function ($q) {
-                $q->active()->with(['openCheck:id,table_id,number,covers,opened_at,subtotal']);
+                $q->active()->with(['openCheck:id,table_id,number,covers,opened_at,total,transferred_from']);
             }])
             ->orderBy('display_order')
             ->get();
@@ -35,7 +35,8 @@ class FloorController extends Controller
                             'number' => $check->number,
                             'covers' => $check->covers,
                             'opened_at' => $check->opened_at?->toIso8601String(),
-                            'subtotal' => (float) $check->subtotal,
+                            'total' => (float) $check->total,
+                            'transferred_from' => $check->transferred_from,
                         ] : null,
                     ];
                 }),

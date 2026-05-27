@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\FelStatus;
 use App\Http\Controllers\Controller;
 use App\Jobs\IssueFelInvoice;
 use App\Models\FelInvoice;
 use App\Services\Fel\FelService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -28,8 +30,10 @@ class FelInvoiceController extends Controller
                 'numero'        => $inv->numero,
                 'receptor_nit'  => $inv->receptor_nit,
                 'error_message' => $inv->error_message,
+                'cancel_reason' => $inv->cancel_reason,
                 'retries'       => $inv->retries,
                 'issued_at'     => $inv->issued_at?->toIso8601String(),
+                'cancelled_at'  => $inv->cancelled_at?->toIso8601String(),
                 'created_at'    => $inv->created_at?->toIso8601String(),
             ]);
 
@@ -50,5 +54,26 @@ class FelInvoiceController extends Controller
         IssueFelInvoice::dispatch($invoice);
 
         return back()->with('success', 'Reintento programado.');
+    }
+
+    public function cancel(Request $request, FelInvoice $invoice, FelService $fel): RedirectResponse
+    {
+        if ($invoice->status !== FelStatus::Issued) {
+            throw ValidationException::withMessages([
+                'invoice' => 'Solo se pueden anular facturas emitidas.',
+            ]);
+        }
+
+        $data = $request->validate([
+            'reason' => 'required|string|min:5|max:255',
+        ]);
+
+        try {
+            $fel->cancel($invoice, $data['reason']);
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['invoice' => $e->getMessage()]);
+        }
+
+        return back()->with('success', "Factura UUID {$invoice->uuid} anulada exitosamente.");
     }
 }

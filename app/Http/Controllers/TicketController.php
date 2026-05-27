@@ -3,9 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Enums\CheckItemStatus;
+use App\Models\BusinessSetting;
 use App\Models\Check;
 use App\Models\KitchenStation;
+use Endroid\QrCode\Builder\Builder;
+use Endroid\QrCode\Writer\SvgWriter;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\URL;
 
 class TicketController extends Controller
 {
@@ -23,9 +27,27 @@ class TicketController extends Controller
             'felInvoice',
         ]);
 
-        $ivaRate = (float) config('restaurant.iva_rate');
+        $ivaRate  = (float) config('restaurant.iva_rate');
+        $business = BusinessSetting::instance();
 
-        return view('tickets.check', compact('check', 'ivaRate'));
+        $ratingUrl = URL::temporarySignedRoute(
+            'rate.show',
+            now()->addDays(7),
+            ['check' => $check->id],
+        );
+
+        $ratingQr = (new Builder(
+            writer: new SvgWriter(),
+            writerOptions: [
+                SvgWriter::WRITER_OPTION_EXCLUDE_XML_DECLARATION => true,
+                SvgWriter::WRITER_OPTION_COMPACT                 => true,
+            ],
+            data:   $ratingUrl,
+            size:   140,
+            margin: 4,
+        ))->build()->getString();
+
+        return view('tickets.check', compact('check', 'ivaRate', 'business', 'ratingQr'));
     }
 
     /**
