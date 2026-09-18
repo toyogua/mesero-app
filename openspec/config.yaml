@@ -1,0 +1,74 @@
+project: mesero-app
+initialized: "2026-05-27"
+artifact_store: openspec
+
+context: |
+  POS para restaurantes. Laravel 12 + PHP 8.2, Vue 3 + Inertia.js (monolito SPA).
+  Tailwind v4 OKLCH tokens. Queue: Redis+Reverb (Docker) / Ably+sync (DreamHost).
+  PKs: ULIDs. FEL SAT Guatemala integrado (adapter pattern: null | infile | rpa).
+  Feature flags via config/restaurant.php + .env. Role guard: middleware role:admin.
+  State machine: CheckItemStatus. IVA 12%: MontoGravable = Total / 1.12.
+
+strict_tdd: true
+
+testing:
+  runner: phpunit
+  command: php artisan test
+  layers:
+    unit:
+      available: true
+      tool: PHPUnit
+      path: tests/Unit
+    feature:
+      available: true
+      tool: PHPUnit (RefreshDatabase, SQLite :memory:)
+      path: tests/Feature
+    e2e:
+      available: false
+      tool: ~
+  coverage:
+    available: false
+    command: ~
+  quality:
+    linter:
+      available: true
+      tool: Laravel Pint
+      command: ./vendor/bin/pint
+    type_checker:
+      available: false
+      command: ~
+    formatter:
+      available: true
+      tool: Laravel Pint
+      command: ./vendor/bin/pint
+
+phases:
+  proposal:
+    format: markdown
+    path: openspec/changes/{name}/proposal.md
+  spec:
+    format: markdown
+    path: openspec/changes/{name}/spec.md
+  design:
+    format: markdown
+    path: openspec/changes/{name}/design.md
+  tasks:
+    format: markdown
+    path: openspec/changes/{name}/tasks.md
+  apply_progress:
+    format: markdown
+    path: openspec/changes/{name}/apply-progress.md
+  verify_report:
+    format: markdown
+    path: openspec/changes/{name}/verify-report.md
+  archive_report:
+    format: markdown
+    path: openspec/changes/{name}/archive/
+
+conventions:
+  - "Dual-mode: mismo código Docker (Reverb+Redis) y DreamHost (sync+Ably), controlado por .env"
+  - "Tests: SQLite :memory: con RefreshDatabase. SQL driver-aware donde aplica."
+  - "Role guard: middleware role:admin en todas las rutas /admin/*"
+  - "Feature flags: config/restaurant.php + .env (ej: FEL_ENABLED, FEL_ADAPTER)"
+  - "PKs: ULIDs en todas las entidades de dominio"
+  - "Commits: conventional commits sin Co-Authored-By"
